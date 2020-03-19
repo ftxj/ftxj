@@ -13,6 +13,8 @@ gitignore/VisualStudio.gitignore
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
 # User-specific files
+*.mtx
+*.out
 *.rsuser
 *.suo
 *.user
@@ -26,6 +28,7 @@ gitignore/VisualStudio.gitignore
 mono_crash.*
 
 # Build results
+data/res
 [Dd]ebug/
 [Dd]ebugPublic/
 [Rr]elease/
