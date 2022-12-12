@@ -1,0 +1,52 @@
+
+import torch
+import inspect
+from abc import abstractmethod
+import os
+import sys
+import os.path as osp
+import importlib
+
+class Base1(torch.nn.Module):
+    @abstractmethod
+    def forward(self, x):
+        """ABC forward"""
+
+class Base2(torch.nn.Module):
+    @abstractmethod
+    def forward(self, x):
+        """ABC forward"""
+
+class Net1(Base1):
+    def __init__(self):
+        super(Net1, self).__init__()
+        self.linear = torch.nn.Linear(1,1)
+    def forward(self, x):
+        return self.linear(x)
+
+
+class Net2(torch.nn.Module):
+    def __init__(self):
+        super(Net2, self).__init__()
+        self.linear = torch.nn.Linear(1,1)
+
+    def forward(self, x):
+        return self.linear(x)
+
+class {{cls_name}}(torch.nn.Module):
+    def __init__(self, flag):
+        super(Net, self).__init__()
+        self.layer = torch.nn.ModuleList()
+
+        if(flag):
+            self.layer.append(Net1())
+            self.layer.append(Net2())
+        else:
+            self.layer.append(Net1())
+            self.layer.append(Net2())
+            self.make_ts_happy = [Net1(), Net2]
+
+    def forward(self, x):
+        b = x
+{{real_doing}}
+        return b
