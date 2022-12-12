@@ -70,9 +70,9 @@ class Net(torch.nn.Module):
         real_doing = ""
         for idx in range(len(self.layer)):
             if isinstance(self.layer[idx], Base1):
-                real_doing = real_doing + "        x = x + self.layer[idx](x)"
+                real_doing = real_doing + "        x = x + self.layer[" + str(idx) + "](x)\n"
             elif isinstance(self.layer[idx], Base2):
-                real_doing = real_doing + "        x = x * self.layer[idx](x)"
+                real_doing = real_doing + "        x = x * self.layer[" + str(idx) + "](x)\n"
         cls_name = "NetJit"
         jit_module_repr = template.render(
             real_doing=real_doing,
@@ -85,14 +85,9 @@ class Net(torch.nn.Module):
         return module
 
 def class_from_module_repr(cls_name, module_repr):
-    f = open("/workspace/github/examples/jit.py", 'w')
+    f = open("./jit/jit.py", 'w')
     f.write(module_repr)
-    spec = importlib.util.spec_from_file_location(cls_name, "/workspace/github/examples/jit.py")
-    mod = importlib.util.module_from_spec(spec)
-
-    sys.modules[cls_name] = mod
-    spec.loader.exec_module(mod)
-
+    mod = importlib.import_module("jit")
     return getattr(mod, cls_name)
     
 
