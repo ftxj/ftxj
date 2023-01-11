@@ -16,10 +16,20 @@ class Frame(object):
         self.data_stack.pop()
         return data
 
+
+
 class Instruction(object):
-    def __init__(self, opcode, argval):
+    def __init__(self, opcode, opname, argval):
         self.opcode = opcode
+        self.opname = opname
         self.argval = argval
+
+def convert_instruction(i: dis.Instruction):
+    return Instruction(
+        i.opcode,
+        i.opname,
+        i.argval
+    )
 
 binaryOperationList = {
     'POWER':    pow,
@@ -42,6 +52,8 @@ class VirtualMachine(object):
     def __init__(self):
         self.frame = []
         self.frame.append(Frame())
+        self.instructions = []
+        self.pc = 0
 
     def push(self, elm):
         self.frame[0].push_data(elm)
@@ -58,18 +70,25 @@ class VirtualMachine(object):
         name = inst.argval
         self.push(name)
 
+    def step(self):
+        inst = self.instructions[self.pc]
+        getattr(self, inst.opname)(inst)
+
     def run(self, code):
-        pass
+        self.instructions = list(map(convert_instruction, dis.get_instructions(code)))
+        self.pc = 1
+        while(self.pc < len(self.instructions)):
+            self.step()
+            self.pc = self.pc + 1
+            return
+
+
+def test_add_fn():
+    return 3 + 4
 
 def test():
-    a = 5
-    b = 6
     vm = VirtualMachine()
-    parm1 = Instruction(100, 3)
-    parm2 = Instruction(100, 7)
-    vm.LOAD_CONST(parm1)
-    vm.LOAD_CONST(parm2)
-    vm.binaryOp("ADD")
+    vm.run(test_add_fn)
     print(vm.pop())    
 
 test()
