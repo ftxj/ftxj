@@ -2,8 +2,13 @@ import dis
 import inspect
 import operator
 from typing import Any, List, Optional
-
+import sys 
 class BuildinFunctions(object):
+    def __init__(self, name, bin):
+        self.name = name
+        self.bin = bin
+
+class Functions(object):
     def __init__(self, name, bin):
         self.name = name
         self.bin = bin
@@ -24,8 +29,6 @@ class Frame(object):
         data = self.data_stack[-1]
         self.data_stack.pop()
         return data
-
-
 
 class Instruction(object):
     def __init__(self, opcode, opname, argval, argrepr, arg):
@@ -103,7 +106,10 @@ class VirtualMachine(object):
 
     def BINARY_OP(self, inst):
         self.binaryOp(inst.argrepr)
-
+    
+    def BINARY_ADD(self, inst):
+        self.binaryOp('ADD')
+    
     def POP_TOP(self, inst):
         self.pop()
 
@@ -119,6 +125,15 @@ class VirtualMachine(object):
         fn = self.pop()
         if fn.name in self.frame[-1].f_builtins:
             fn.bin(tuple(params))
+    
+    def CALL_FUNCTION(self, inst):
+        num_params = inst.arg
+        params = []
+        for i in range(num_params):
+            params.append(self.pop())
+        params.reverse()
+        fn = self.pop()
+        self.push(fn.bin(tuple(params)))
 
     def RESUME(self, inst):
         pass
@@ -130,6 +145,36 @@ class VirtualMachine(object):
 
     def MAKE_FUNCTION(self, inst):
         fn = self.pop()
+
+    def IMPORT_NAME(self, inst):
+        fromlist = self.pop()
+        level = self.pop()
+        frame = self.frame[-1]
+        self.push(
+            __import__(inst.argval, frame.f_globals, frame.f_locals, fromlist, level)
+        )
+
+
+    def LOAD_METHOD(self, inst):
+        frame = self.frame[-1]
+        name = inst.argval
+        namespace_num = inst.arg
+        namespace = []
+        for i in range(namespace_num):
+            namespace.append(self.pop())
+        namespace.reverse()
+        namespace.append(name)
+        method = getattr(namespace[0], name)
+        self.push(Functions(name, method))
+
+    def CALL_METHOD(self, inst):
+        num_params = inst.arg
+        params = []
+        for i in range(num_params):
+            params.append(self.pop())
+        params.reverse()
+        fn = self.pop()
+        self.push(fn.bin(tuple(params)))
 
     def step(self):
         inst = self.instructions[self.pc]
@@ -145,9 +190,10 @@ class VirtualMachine(object):
 
 def test():
     code = '''
-a = 3
-b = 4
-print(a + b, a)
+import torch
+a = torch.randn(3,3)
+b = torch.randn(3,3)
+print(a + b)
 '''
     vm = VirtualMachine()
     vm.run(code)
