@@ -219,7 +219,6 @@ def SetRegisterMap(file):
 
   # Replace <regs> with ''
   file = register_map_re.sub('', file)
-
   return file, reg_map
 def SetParameterMap(file):
   '''

@@ -25,6 +25,7 @@ def main():
     file, params = SetParameterMap(file)
     file, consts = SetConstsMap(file)
     file   = ReplaceRegParamConstMap(file, regs, params, consts)
+    print(file)
     kernel = assemble(file)
 
   # Write out cubin file
