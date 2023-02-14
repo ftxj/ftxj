@@ -7,6 +7,12 @@ import time
 from profile_pattern import Pattern, FnWrapper
 
 
+import time
+import ctypes
+_cudart = ctypes.CDLL('libcudart.so')
+ret = _cudart.cudaProfilerStart()
+torch._C._jit_set_nvfuser_enabled(True)
+
 class IndexselectSubMul(Pattern):
     def __init__(self):
         # Pattern in schnet
@@ -14,15 +20,18 @@ class IndexselectSubMul(Pattern):
         self.name = "Schnet::IndexselectSubMul"
         self.shape = [
             [
-                [200, 200],
-                [200, 200],
-                [200, 200],
-                [200],
+                [4639, 1],
+                [256, 3],
+                [4639, 3],
+                [4639],
                 200,
+                "(256,3)[4639]"
             ]
         ]
 
     def init_data(self, test_id):
+        self.str_data = self.shape[test_id][5]
+
         h = torch.randn(self.shape[test_id][0], device="cuda")
         c = torch.randn(self.shape[test_id][1], device="cuda")
         pos = torch.randn(self.shape[test_id][2], device="cuda")
@@ -47,15 +56,24 @@ class IndexselectMul(Pattern):
         self.name = "OC20::IndexselectMul"
         self.shape = [
             [
-                [200, 200],
-                [200],
-                [200, 200],
+                [200, 3],
+                [4096],
+                [4096, 3],
                 200,
+                "(256 * 3)[4096]"
+            ],
+            [
+                [200, 200],
+                [20000],
+                [20000, 1],
+                200,
+                "(256 * 200)[20000]"
             ]
         ]
 
     def init_data(self, test_id):
-
+        self.str_data = self.shape[test_id][4]
+        
         x_kj = torch.randn(self.shape[test_id][0], device="cuda")
         idx_kj = torch.randint(self.shape[test_id][3], self.shape[test_id][1], device="cuda")
         sbf = torch.randn(self.shape[test_id][2], device="cuda")
@@ -66,10 +84,22 @@ class IndexselectMul(Pattern):
         x.triton_fn = torch.compile(IndexselectMul.fn)
         x.nvfuser_fn = torch.jit.script(IndexselectMul.fn)
         x.eager_fn = IndexselectMul.fn
+        x.name = "(original)"
         self.profile_fn_list.append(x)
+
+        y = FnWrapper()
+        y.triton_fn = torch.compile(IndexselectMul.fn_modify)
+        y.nvfuser_fn = torch.jit.script(IndexselectMul.fn_modify)
+        y.name = "(modify)"
+        y.eager_fn = IndexselectMul.fn_modify
+        self.profile_fn_list.append(y)
+
     # Pattern in OC20
     def fn(x_kj: Tensor, idx_kj: Tensor, sbf: Tensor):
         return x_kj[idx_kj] * sbf
+
+    def fn_modify(x_kj: Tensor, idx_kj: Tensor, sbf: Tensor):
+        return x_kj.index_select(0, idx_kj) * sbf
 
 class IndexIndexMul(Pattern):
     def __init__(self):
@@ -170,7 +200,11 @@ class ToDenseBatch(Pattern):
         y = out.index_select(0, idx)
         return y
 
-IndexselectSubMul().run()
-IndexselectMul().run()
+# IndexselectSubMul().run()
+# IndexselectMul().run()
 IndexIndexMul().run()
-ToDenseBatch().run()
+# ToDenseBatch().run()
+
+ret = _cudart.cudaProfilerStop()
+
+torch.cuda.synchronize()
