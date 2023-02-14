@@ -1,10 +1,5 @@
 import torch
-from pyg import scatter
-import time
 from torch import Tensor
-import prettytable as pt
-import os
-from contextlib import contextmanager
 
 def index_select_elementwise_reduce(x: Tensor, row, col):
     x_i = torch.index_select(x, 0, row)
