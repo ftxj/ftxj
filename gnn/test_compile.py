@@ -1,22 +1,8 @@
 import warnings
-
 import torch
-
-# import logging
-# from torch._dynamo import optimize, config
-# config.verbose=True
-# config.log_level = logging.DEBUG
-# config.repro_after = "dynamo"
-# config.repro_level = 3
-# from torch._inductor import config
-# config.triton.cudagraphs = False
-# config.debug = False
-# config.tune_layout = True
-
 from typing import Optional, Tuple
 
 import torch
-
 
 def broadcast(src: torch.Tensor, other: torch.Tensor, dim: int):
     if dim < 0:

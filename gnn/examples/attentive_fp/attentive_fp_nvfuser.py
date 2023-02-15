@@ -8,10 +8,11 @@ from rdkit import Chem
 from torch_geometric.datasets import MoleculeNet
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn.models import AttentiveFP
+
+import time
 import ctypes
 _cudart = ctypes.CDLL('libcudart.so')
 ret = _cudart.cudaProfilerStart()
-
 
 class GenFeatures(object):
     def __init__(self):
@@ -115,7 +116,9 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = AttentiveFP(in_channels=39, hidden_channels=200, out_channels=1,
                     edge_dim=10, num_layers=2, num_timesteps=2,
                     dropout=0.2).jittable().to(device)
+
 model = torch.jit.script(model)
+
 optimizer = torch.optim.Adam(model.parameters(), lr=10**-2.5,
                              weight_decay=10**-5)
 
@@ -125,29 +128,19 @@ def train():
     for data in train_loader:
         data = data.to(device)
 
-        torch.cuda.nvtx.range_push("0-zero-grad")
         optimizer.zero_grad()
-        torch.cuda.nvtx.range_pop()
 
-        torch.cuda.nvtx.range_push("1-forward")
         out = model(data.x, data.edge_index, data.edge_attr, data.batch)
-        torch.cuda.nvtx.range_pop()
 
-        torch.cuda.nvtx.range_push("2-loss")
         loss = F.mse_loss(out, data.y)
-        torch.cuda.nvtx.range_pop()
 
-        torch.cuda.nvtx.range_push("3-backward")
         loss.backward()
-        torch.cuda.nvtx.range_pop()
 
-        torch.cuda.nvtx.range_push("4-upgrad")
         optimizer.step()
-        torch.cuda.nvtx.range_pop()
 
-        total_loss += float(loss) * data.num_graphs
-        total_examples += data.num_graphs
-    return sqrt(total_loss / total_examples)
+    #     total_loss += float(loss) * data.num_graphs
+    #     total_examples += data.num_graphs
+    # return sqrt(total_loss / total_examples)
 
 
 @torch.no_grad()
@@ -156,36 +149,30 @@ def test(loader):
     for data in loader:
         data = data.to(device)
         
-        torch.cuda.nvtx.range_push("1-test-forward-" + str(epoch))
         out = model(data.x, data.edge_index, data.edge_attr, data.batch)
-        torch.cuda.nvtx.range_pop()
     
-        torch.cuda.nvtx.range_push("2-test-loss" + str(epoch))
         mse.append(F.mse_loss(out, data.y, reduction='none').cpu())
-        torch.cuda.nvtx.range_pop()
     
-    torch.cuda.nvtx.range_push("after-iter" + str(epoch))
-    x = float(torch.cat(mse, dim=0).mean().sqrt())
-    torch.cuda.nvtx.range_pop()
-    return x
-
+    x = torch.cat(mse, dim=0).mean().sqrt()
+    # return x
+wramup = 10
+test_epoc = 100
 with torch.jit.fuser("fuser2"):
-    for epoch in range(1, 201):
+    for epoch in range(1, wramup + test_epoc):
+        if(epoch == wramup):
+            start = time.time()
         
-        torch.cuda.nvtx.range_push("Train-" + str(epoch))
-        train_rmse = train()
-        torch.cuda.nvtx.range_pop()
+        train()
         
-        torch.cuda.nvtx.range_push("Test1-" + str(epoch))
-        val_rmse = test(val_loader)
-        torch.cuda.nvtx.range_pop()
+        test(val_loader)
 
-        torch.cuda.nvtx.range_push("Test2-" + str(epoch))
-        test_rmse = test(test_loader)
-        torch.cuda.nvtx.range_pop()
+        test(test_loader)
 
-        print(f'Epoch: {epoch:03d}, Loss: {train_rmse:.4f} Val: {val_rmse:.4f} '
-            f'Test: {test_rmse:.4f}')
+
 ret = _cudart.cudaProfilerStop()
 
 torch.cuda.synchronize()
+stop = time.time()
+
+print("total =", stop-start)
+print("each =", (stop-start) / test_epoc)

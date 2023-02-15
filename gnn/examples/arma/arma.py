@@ -5,70 +5,56 @@ import torch.nn.functional as F
 
 import torch_geometric.transforms as T
 from torch_geometric.datasets import Planetoid
-from torch_geometric.nn import AGNNConv
+from torch_geometric.nn import ARMAConv
 
 dataset = 'Cora'
 path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', dataset)
 dataset = Planetoid(path, dataset, transform=T.NormalizeFeatures())
 data = dataset[0]
+
+
+import time
 import ctypes
 _cudart = ctypes.CDLL('libcudart.so')
 ret = _cudart.cudaProfilerStart()
 
-
+def act_fn(x):
+    return x
 class Net(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, in_channels, hidden_channels, out_channels):
         super().__init__()
-        self.lin1 = torch.nn.Linear(dataset.num_features, 16)
-        self.prop1 = AGNNConv(requires_grad=False).jittable()
-        self.prop2 = AGNNConv(requires_grad=True).jittable()
-        self.lin2 = torch.nn.Linear(16, dataset.num_classes)
 
-    def forward(self, data_x, data_edge_index):
-                
-        x = F.dropout(data_x, training=self.training)
-        x = F.relu(self.lin1(x))
+        self.conv1 = ARMAConv(in_channels, hidden_channels, num_stacks=3,
+                              num_layers=2, shared_weights=True, dropout=0.25).jittable()
 
-        x = self.prop1(x, data_edge_index)
+        self.conv2 = ARMAConv(hidden_channels, out_channels, num_stacks=3,
+                              num_layers=2, shared_weights=True, dropout=0.25,
+                              act=act_fn).jittable()
 
-        x = self.prop2(x, data_edge_index)
-
+    def forward(self, x, edge_index):
         x = F.dropout(x, training=self.training)
-        x = self.lin2(x)
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.dropout(x, training=self.training)
+        x = self.conv2(x, edge_index)
+        return F.log_softmax(x, dim=1)
 
-        x = F.log_softmax(x, dim=1)
-
-        return x
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model, data = Net().to(device), data.to(device)
+model, data = Net(dataset.num_features, 16,
+                  dataset.num_classes).to(device), data.to(device)
+model = torch.compile(model)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
-model = torch.compile(model)
+
 def train():
     model.train()
-    # torch.cuda.nvtx.range_push("0-zero-grad")
     optimizer.zero_grad()
-    # torch.cuda.nvtx.range_pop()
-
-    # torch.cuda.nvtx.range_push("1-forward")
     out = model(data.x, data.edge_index)
-    # torch.cuda.nvtx.range_pop()
-
-    # torch.cuda.nvtx.range_push("2-loss")
     loss = F.nll_loss(out[data.train_mask], data.y[data.train_mask])
-    # torch.cuda.nvtx.range_pop()
-
-    # torch.cuda.nvtx.range_push("3-backward")
     loss.backward()
-    # torch.cuda.nvtx.range_pop()
-
-    # torch.cuda.nvtx.range_push("4-upgrad")
     optimizer.step()
-    # torch.cuda.nvtx.range_pop()
 
 
-@torch.no_grad()
 def test():
     model.eval()
     out, accs = model(data.x, data.edge_index), []
@@ -80,23 +66,22 @@ def test():
 
 
 best_val_acc = test_acc = 0
-
-for epoch in range(1, 201):
-    # torch.cuda.nvtx.range_push("Train-" + str(epoch))
+wramup = 10
+test_epoc = 100
+for epoch in range(1, wramup + test_epoc):
+    if(epoch == wramup):
+        start = time.time()
     train()
-    # torch.cuda.nvtx.range_pop()
-
-    # torch.cuda.nvtx.range_push("Test-" + str(epoch))
     train_acc, val_acc, tmp_test_acc = test()
-    # torch.cuda.nvtx.range_pop()
     if val_acc > best_val_acc:
         best_val_acc = val_acc
         test_acc = tmp_test_acc
     print(f'Epoch: {epoch:03d}, Train: {train_acc:.4f}, '
-        f'Val: {best_val_acc:.4f}, Test: {test_acc:.4f}')
-
- 
-
+          f'Val: {best_val_acc:.4f}, Test: {test_acc:.4f}')
 ret = _cudart.cudaProfilerStop()
 
 torch.cuda.synchronize()
+stop = time.time()
+
+print("total =", stop-start)
+print("each =", (stop-start) / test_epoc)

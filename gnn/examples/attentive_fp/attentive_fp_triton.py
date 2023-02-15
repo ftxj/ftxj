@@ -8,15 +8,18 @@ from rdkit import Chem
 from torch_geometric.datasets import MoleculeNet
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn.models import AttentiveFP
+
+
+
+import time
 import ctypes
 _cudart = ctypes.CDLL('libcudart.so')
 ret = _cudart.cudaProfilerStart()
 
-
-import logging
-from torch._dynamo import optimize, config
-config.verbose=True
-config.log_level = logging.DEBUG
+# import logging
+# from torch._dynamo import optimize, config
+# config.verbose=True
+# config.log_level = logging.DEBUG
 # config.repro_after = "dynamo"
 # config.repro_level = 3
 # from torch._inductor import config
@@ -127,7 +130,7 @@ model = AttentiveFP(in_channels=39, hidden_channels=200, out_channels=1,
                     edge_dim=10, num_layers=2, num_timesteps=2,
                     dropout=0.2).to(device)
 
-model = torch.compile(model)
+model = torch.jit.script(model)
 
 optimizer = torch.optim.Adam(model.parameters(), lr=10**-2.5,
                              weight_decay=10**-5)
@@ -156,17 +159,22 @@ def test(loader):
         mse.append(F.mse_loss(out, data.y, reduction='none').cpu())
     return float(torch.cat(mse, dim=0).mean().sqrt())
 
-for epoch in range(1, 201):
+wramup = 10
+test_epoc = 100
+for epoch in range(1, wramup + test_epoc):
+    if(epoch == wramup):
+        start = time.time()
     
-    torch.cuda.nvtx.range_push("Train-" + str(epoch))
     train_rmse = train()
-    torch.cuda.nvtx.range_pop()
-
-    torch.cuda.nvtx.range_push("Test1-" + str(epoch))
     val_rmse = test(val_loader)
     test_rmse = test(test_loader)
     print(f'Epoch: {epoch:03d}, Loss: {train_rmse:.4f} Val: {val_rmse:.4f} '
         f'Test: {test_rmse:.4f}')
+
 ret = _cudart.cudaProfilerStop()
 
 torch.cuda.synchronize()
+stop = time.time()
+
+print("total =", stop-start)
+print("each =", (stop-start) / test_epoc)
