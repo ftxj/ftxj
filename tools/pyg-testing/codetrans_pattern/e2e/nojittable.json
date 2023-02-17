@@ -1,0 +1,30 @@
+[
+    {
+        "name": "args_pattern",
+        "method": "Begin",
+        "old_str": "for epoch in range",
+        "new_str": "\nimport argparse\nparser = argparse.ArgumentParser(description=__file__ + \" Testing\")\n\nparser.add_argument('--warmup', default=5, type=int, \n                    help='Number of warmup iteration')\n\nparser.add_argument('--iter-time', default=1, type=int, \n                    help='Number of perf iteration')\n                    \nparser.add_argument('--gpu-profile', default=False, type=bool, \n                    help='Using cuda profile')\nargs = parser.parse_args()\n\n",
+        "break_line": null
+    },
+    {
+        "name": "pattern_warm_up",
+        "method": "Rewrite",
+        "old_str": "for epoch in range",
+        "new_str": "\nwarm_up_epoch = args.warmup\nperf_epoch = args.iter_time\nfor epoch in range(1, warm_up_epoch + perf_epoch):    \n",
+        "break_line": null
+    },
+    {
+        "name": "pattern_profile_mid",
+        "method": "After",
+        "old_str": "for epoch in range",
+        "new_str": "\n    if(epoch == warm_up_epoch):\n        start = time.time()\n",
+        "break_line": null
+    },
+    {
+        "name": "pattern_profile_end",
+        "method": "AfterBlock",
+        "old_str": "for epoch in range",
+        "new_str": "\ntorch.cuda.synchronize()\nend = time.time()\nprint((end - start) * 1000 / 1)\nexit()\n",
+        "break_line": null
+    }
+]

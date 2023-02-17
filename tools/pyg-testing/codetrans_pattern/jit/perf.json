@@ -1,0 +1,30 @@
+[
+    {
+        "name": "pattern_warm_up",
+        "method": "Rewrite",
+        "old_str": "for epoch in range",
+        "new_str": "\nimport os\nwarm_up_epoch = os.getenv(\"WARM_UP_EPOCH\")\nif(warm_up_epoch):\n    warm_up_epoch = eval(warm_up_epoch)\nelse:\n    warm_up_epoch = 1\nfor epoch in range(1, warm_up_epoch + 2):    \n",
+        "break_line": null
+    },
+    {
+        "name": "pattern_profile_begin",
+        "method": "Before",
+        "old_str": "for epoch in range",
+        "new_str": "\nimport ctypes\nimport time\nimport os\n\ngpu_profile = os.getenv(\"FTXJ_GPU_PROF\")\nif(gpu_profile):\n    gpu_profile = eval(gpu_profile)\nelse:\n    gpu_profile = False\n_cudart = ctypes.CDLL('libcudart.so')    \n",
+        "break_line": null
+    },
+    {
+        "name": "pattern_profile_mid",
+        "method": "After",
+        "old_str": "for epoch in range",
+        "new_str": "\n    if(epoch > warm_up_epoch):\n        start = time.time()\n        if(gpu_profile):\n            ret = _cudart.cudaProfilerStart()\n            torch.cuda.nvtx.range_push(\"Profile\") \n",
+        "break_line": null
+    },
+    {
+        "name": "pattern_profile_end",
+        "method": "AfterBlock",
+        "old_str": "for epoch in range",
+        "new_str": "\nif(gpu_profile):\n    torch.cuda.nvtx.range_pop()\n    ret = _cudart.cudaProfilerStop()\n\ntorch.cuda.synchronize()\nend = time.time()\nprint((end - start) * 1000 / 1)\n\nexit()\n",
+        "break_line": null
+    }
+]

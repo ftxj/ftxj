@@ -1,0 +1,303 @@
+[
+    {
+        "name": "jit_script_pattern",
+        "method": "After",
+        "old_str": "model(.*)=(.*)to(.*)",
+        "new_str": "\n# try:\nmodel = torch.jit.script(model)\n# except Exception as e:\n#     import logging\n#     import os\n#     result_file_root = \"/workspace2/Project/gnn-perf-analysis/data/result/profile_jittable/\"\n#     log_path = os.path.join(result_file_root, \"jittable_result\" + \".log\")\n#     basic_file = os.path.basename(__file__)\n#     logging.basicConfig(filename=log_path, level=logging.DEBUG, filemode = 'a', format='%(levelname)s:%(message)s', datefmt='%Y-%d-%m %H:%M:%S')\n#     logging.info(\"[script fail], \"  + basic_file + \", \" + repr(e))\n#     exit()\n",
+        "break_line": null
+    },
+    {
+        "name": "jit_AGNNConv",
+        "method": "Rewrite",
+        "old_str": "AGNNConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_APPNP",
+        "method": "Rewrite",
+        "old_str": "APPNP[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_ARMAConv",
+        "method": "Rewrite",
+        "old_str": "ARMAConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_CGConv",
+        "method": "Rewrite",
+        "old_str": "CGConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_ChebConv",
+        "method": "Rewrite",
+        "old_str": "ChebConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_ClusterGCNConv",
+        "method": "Rewrite",
+        "old_str": "ClusterGCNConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_DNAConv",
+        "method": "Rewrite",
+        "old_str": "DNAConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_EdgeConv",
+        "method": "Rewrite",
+        "old_str": "EdgeConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_EGConv",
+        "method": "Rewrite",
+        "old_str": "EGConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_FAConv",
+        "method": "Rewrite",
+        "old_str": "FAConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_FeaStConv",
+        "method": "Rewrite",
+        "old_str": "FeaStConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_FiLMConv",
+        "method": "Rewrite",
+        "old_str": "FiLMConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_GATConv",
+        "method": "Rewrite",
+        "old_str": "GATConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_GatedGraphConv",
+        "method": "Rewrite",
+        "old_str": "GatedGraphConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_GATv2Conv",
+        "method": "Rewrite",
+        "old_str": "GATv2Conv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_GCN2Conv",
+        "method": "Rewrite",
+        "old_str": "GCN2Conv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_GCNConv",
+        "method": "Rewrite",
+        "old_str": "GCNConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_GENConv",
+        "method": "Rewrite",
+        "old_str": "GENConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_GINConv",
+        "method": "Rewrite",
+        "old_str": "GINConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_GMMConv",
+        "method": "Rewrite",
+        "old_str": "GMMConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_GraphConv",
+        "method": "Rewrite",
+        "old_str": "GraphConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_GravNetConv",
+        "method": "Rewrite",
+        "old_str": "GravNetConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_HypergraphConv",
+        "method": "Rewrite",
+        "old_str": "HypergraphConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_LEConv",
+        "method": "Rewrite",
+        "old_str": "LEConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_MFConv",
+        "method": "Rewrite",
+        "old_str": "MFConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_NNConv",
+        "method": "Rewrite",
+        "old_str": "NNConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_PANConv",
+        "method": "Rewrite",
+        "old_str": "PANConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_PNAConv",
+        "method": "Rewrite",
+        "old_str": "PNAConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_PointConv",
+        "method": "Rewrite",
+        "old_str": "PointConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_PPFConv",
+        "method": "Rewrite",
+        "old_str": "PPFConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_ResGatedGraphConv",
+        "method": "Rewrite",
+        "old_str": "ResGatedGraphConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_RGCNConv",
+        "method": "Rewrite",
+        "old_str": "RGCNConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_SAGEConv",
+        "method": "Rewrite",
+        "old_str": "SAGEConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_SGConv",
+        "method": "Rewrite",
+        "old_str": "SGConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_SignedConv",
+        "method": "Rewrite",
+        "old_str": "SignedConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_SplineConv",
+        "method": "Rewrite",
+        "old_str": "SplineConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_SuperGATConv",
+        "method": "Rewrite",
+        "old_str": "SuperGATConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_TAGConv",
+        "method": "Rewrite",
+        "old_str": "TAGConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_TransformerConv",
+        "method": "Rewrite",
+        "old_str": "TransformerConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_GATEConv",
+        "method": "Rewrite",
+        "old_str": "GATEConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_LabelPropagation",
+        "method": "Rewrite",
+        "old_str": "LabelPropagation[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    },
+    {
+        "name": "jit_CFConv",
+        "method": "Rewrite",
+        "old_str": "CFConv[(].*?[)]",
+        "new_str": "~$before_pattern/$pattern/.jittable()/$after_pattern/",
+        "break_line": "jittable()"
+    }
+]
