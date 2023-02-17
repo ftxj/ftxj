@@ -14,7 +14,6 @@ data = dataset[0]
 import time
 import ctypes
 _cudart = ctypes.CDLL('libcudart.so')
-ret = _cudart.cudaProfilerStart()
 torch._C._jit_set_nvfuser_enabled(True)
 
 
@@ -28,29 +27,44 @@ class Net(torch.nn.Module):
 
     def forward(self, data_x, data_edge_index):
                 
+        torch.cuda.nvtx.range_push("stage-1")
+
         x = F.dropout(data_x, training=self.training)
         x = F.relu(self.lin1(x))
 
+        torch.cuda.nvtx.range_pop()
+
+        torch.cuda.nvtx.range_push("stage-2")
+
         x = self.prop1(x, data_edge_index)
 
+        torch.cuda.nvtx.range_pop()
+
+        torch.cuda.nvtx.range_push("stage-3")
+
         x = self.prop2(x, data_edge_index)
+
+        torch.cuda.nvtx.range_pop()
+
+        torch.cuda.nvtx.range_push("stage-4")
 
         x = F.dropout(x, training=self.training)
         x = self.lin2(x)
 
         x = F.log_softmax(x, dim=1)
 
+        torch.cuda.nvtx.range_pop()
+
         return x
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model, data = Net().to(device), data.to(device)
-model = torch.jit.script(model)
+# model = torch.jit.script(model)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
 def train():
     model.train()
     optimizer.zero_grad()
-    print(model.graph_for(data.x, data.edge_index))
     out = model(data.x, data.edge_index)
     loss = F.nll_loss(out[data.train_mask], data.y[data.train_mask])
     loss.backward()
@@ -71,10 +85,16 @@ def test():
 best_val_acc = test_acc = 0
 wramup = 10
 test_epoc = 1000
+min_time = 100
+min_train = 100
+
 with torch.jit.fuser("fuser2"):
     for epoch in range(1, wramup + test_epoc):
-        if(epoch == wramup):
-            start = time.time()
+        ret = _cudart.cudaProfilerStart()
+
+        torch.cuda.synchronize()
+        start = time.time()
+
         torch.cuda.nvtx.range_push("Train-" + str(epoch))
         train()
         torch.cuda.nvtx.range_pop()
@@ -82,6 +102,11 @@ with torch.jit.fuser("fuser2"):
         torch.cuda.nvtx.range_push("Test-" + str(epoch))
         train_acc, val_acc, tmp_test_acc = test()
         torch.cuda.nvtx.range_pop()
+
+        torch.cuda.synchronize()
+        stop = time.time()
+        min_time = min(min_time, stop - start)
+        
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             test_acc = tmp_test_acc
@@ -93,5 +118,5 @@ ret = _cudart.cudaProfilerStop()
 torch.cuda.synchronize()
 stop = time.time()
 
-print("total =", stop-start)
-print("each =", (stop-start) / test_epoc)
+print("min =", min_time)
+# print("each =", (stop-start) / test_epoc)

@@ -11,9 +11,9 @@ from torch_geometric.nn import GCNConv
 
 import time
 import ctypes
-_cudart = ctypes.CDLL('libcudart.so')
-ret = _cudart.cudaProfilerStart()
-torch._C._jit_set_nvfuser_enabled(True)
+# _cudart = ctypes.CDLL('libcudart.so')
+# ret = _cudart.cudaProfilerStart()
+# torch._C._jit_set_nvfuser_enabled(True)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', type=str, default='Cora')
@@ -24,7 +24,7 @@ parser.add_argument('--use_gdc', action='store_true', help='Use GDC')
 parser.add_argument('--wandb', action='store_true', help='Track experiment')
 args = parser.parse_args()
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cpu' if torch.cuda.is_available() else 'cpu')
 init_wandb(name=f'GCN-{args.dataset}', lr=args.lr, epochs=args.epochs,
            hidden_channels=args.hidden_channels, device=device)
 
@@ -47,9 +47,9 @@ class GCN(torch.nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels):
         super().__init__()
         self.conv1 = GCNConv(in_channels, hidden_channels, cached=True,
-                             normalize=not args.use_gdc, add_self_loops=False).jittable()
+                             normalize=not args.use_gdc, add_self_loops=False)
         self.conv2 = GCNConv(hidden_channels, out_channels, cached=True, add_self_loops=False,
-                             normalize=not args.use_gdc).jittable()
+                             normalize=not args.use_gdc)
 
     def forward(self, x, edge_index, edge_weight=None):
         x = F.dropout(x, p=0.5, training=self.training)
@@ -60,7 +60,8 @@ class GCN(torch.nn.Module):
 
 
 model = GCN(dataset.num_features, args.hidden_channels, dataset.num_classes)
-model = torch.compile(model)
+print(dataset.num_features, args.hidden_channels, dataset.num_classes)
+# model = torch.jit.script(model)
 
 # print(model.graph)
 model, data = model.to(device), data.to(device)
@@ -74,6 +75,10 @@ def train():
     model.train()
     optimizer.zero_grad()
     out = model(data.x, data.edge_index, data.edge_attr)
+    print("x = ", data.x.size())
+    print("edge_index = ", data.edge_index.size())
+    
+
     loss = F.cross_entropy(out[data.train_mask], data.y[data.train_mask])
     loss.backward()
     optimizer.step()
@@ -100,15 +105,16 @@ with torch.jit.fuser("fuser2"):
         if(epoch == wramup):
             start = time.time()
         loss = train()
+        exit()
         train_acc, val_acc, tmp_test_acc = test()
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             test_acc = tmp_test_acc
         # log(Epoch=epoch, Loss=loss, Train=train_acc, Val=val_acc, Test=test_acc)
-ret = _cudart.cudaProfilerStop()
+# ret = _cudart.cudaProfilerStop()
 
-torch.cuda.synchronize()
-stop = time.time()
+# torch.cuda.synchronize()
+# stop = time.time()
 
 print("total =", stop-start)
 print("each =", (stop-start) / test_epoc)
