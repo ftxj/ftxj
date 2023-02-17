@@ -38,13 +38,13 @@ class GCN(torch.nn.Module):
         return self.update(out)
 
     def message(self, x_j):
-        return x_j
+        return x_j + 1.0
     
     def aggregate(self, x, index):
         return scatter(x, index, 0, 2708)
 
     def update(self, inputs):
-        return inputs
+        return inputs + 0.2
 
 # (nodes, features)
 node_feature = torch.randn(2708, 1433)
