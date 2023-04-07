@@ -1,154 +1,223 @@
-from ctypes import c_void_p, c_long
+"""
+[Graph Attention Networks]
+(https://arxiv.org/abs/1710.10903)
+"""
+
+import dgl.sparse as dglsp
 import torch
-import math
-import random
-from torch import empty_strided, as_strided, device
-from torch._inductor.codecache import AsyncCompile
-from torch._inductor.select_algorithm import extern_kernels
-
-aten = torch.ops.aten
-assert_size_stride = torch._C._dynamo.guards.assert_size_stride
-async_compile = AsyncCompile()
-
-import triton
-import triton.language as tl
-from torch._inductor.triton_ops.autotune import grid, start_graph, end_graph
-from torch._C import _cuda_getCurrentRawStream as get_cuda_stream
+import torch.nn as nn
+import torch.nn.functional as F
+from dgl.data import CoraGraphDataset, FlickrDataset, RedditDataset
+from torch.optim import Adam
+import ctypes
+import python_ops
 
 
-# kernel path: /tmp/torchinductor_jxin/y6/cy6kzfjfj3bv73h3nb6y5czrmnu72qajcyaojkaczlavbvcx5tsl.py
-# Original ATen: aten.index_select, aten.mul, aten.new_zeros, aten.scatter_add
+class GATConv(nn.Module):
+    def __init__(self, in_size, out_size, num_heads, dropout):
+        super().__init__()
 
-# aten.index_select => index
-# aten.mul => mul
-# aten.new_zeros => full
-# aten.scatter_add => scatter_add
-triton_fused_index_select_mul_new_zeros_scatter_add_0 = async_compile.triton('''
-import triton
-import triton.language as tl
-from torch._inductor.ir import ReductionHint
-from torch._inductor.ir import TileHint
-from torch._inductor.triton_ops.autotune import pointwise
-from torch._inductor.utils import instance_descriptor
+        self.out_size = out_size
+        self.num_heads = num_heads
 
-@pointwise(size_hints=[4194304], filename=__file__, meta={'signature': {0: '*fp32', 1: '*fp32', 2: 'i32'}, 'device': 0, 'constants': {}, 'mutated_arg_names': [], 'configs': [instance_descriptor(divisible_by_16=(0, 1, 2), equal_to_1=())]})
-@triton.jit
-def triton_(out_ptr0, out_ptr1, xnumel, XBLOCK : tl.constexpr):
-    xnumel = 3727440
-    xoffset = tl.program_id(0) * XBLOCK
-    xindex = xoffset + tl.arange(0, XBLOCK)[:]
-    xmask = xindex < xnumel
-    x0 = xindex
-    tmp0 = 0.0
-    tl.store(out_ptr0 + (x0 + tl.zeros([XBLOCK], tl.int32)), tmp0, xmask)
-    tl.store(out_ptr1 + (x0 + tl.zeros([XBLOCK], tl.int32)), tmp0, xmask)
-''')
+        self.dropout = nn.Dropout(dropout)
+        self.W = nn.Linear(in_size, out_size * num_heads)
+        self.a_l = nn.Parameter(torch.zeros(1, out_size, num_heads))
+        self.a_r = nn.Parameter(torch.zeros(1, out_size, num_heads))
+        self.reset_parameters()
+        self.softmax = dglsp.softmax
 
+    def reset_parameters(self):
+        gain = nn.init.calculate_gain("relu")
+        nn.init.xavier_normal_(self.W.weight, gain=gain)
+        nn.init.xavier_normal_(self.a_l, gain=gain)
+        nn.init.xavier_normal_(self.a_r, gain=gain)
 
-# kernel path: /tmp/torchinductor_jxin/4i/c4ivehv2ctifflwh2frz34u6hodwfzlg2umy7xg37sps6y4cmqhq.py
-# Original ATen: aten.index_select, aten.mul, aten.scatter_add
+    ###########################################################################
+    # (HIGHLIGHT) Take the advantage of DGL sparse APIs to implement
+    # multihead attention.
+    ###########################################################################
+    def foo2(self, A):
+        return A.row, A.col
+    
+    def foo3(self, A):
+        return A.val
 
-# aten.index_select => index
-# aten.mul => mul
-# aten.scatter_add => scatter_add
-triton_fused_index_select_mul_scatter_add_1 = async_compile.triton('''
-import triton
-import triton.language as tl
-from torch._inductor.ir import ReductionHint
-from torch._inductor.ir import TileHint
-from torch._inductor.triton_ops.autotune import pointwise
-from torch._inductor.utils import instance_descriptor
+    def forward(self, A_hat, Z):
+        
+        row, col = self.foo2(A_hat)
 
-@pointwise(size_hints=[2147483648], filename=__file__, meta={'signature': {0: '*i64', 1: '*fp32', 2: '*fp32', 3: '*fp32', 4: 'i32'}, 'device': 0, 'constants': {}, 'mutated_arg_names': ['out_ptr0'], 'configs': [instance_descriptor(divisible_by_16=(0, 1, 2, 3, 4), equal_to_1=())]})
-@triton.jit
-def triton_(in_ptr0, in_ptr1, in_ptr2, out_ptr0, xnumel, XBLOCK : tl.constexpr):
-    xnumel = 1837581712
-    xoffset = tl.program_id(0) * XBLOCK
-    xindex = xoffset + tl.arange(0, XBLOCK)[:]
-    xmask = xindex < xnumel
-    x1 = (xindex // 16)
-    x0 = xindex % 16
-    tmp0 = tl.load(in_ptr0 + (114848857 + x1), xmask)
-    tmp1 = tl.load(in_ptr1 + (x1), xmask)
-    tmp2 = tl.load(in_ptr0 + (x1), xmask)
-    tmp3 = tl.load(in_ptr2 + (x0 + (16*tmp2)), xmask)
-    tmp4 = tmp1 * tmp3
-    tl.atomic_add(out_ptr0 + (x0 + (16*tmp0) + tl.zeros([XBLOCK], tl.int32)), tmp4, xmask)
-''')
+        Z = self.dropout(Z)
+        Z = self.W(Z).view(Z.shape[0], self.out_size, self.num_heads)
 
+        # a^T [Wh_i || Wh_j] = a_l Wh_i + a_r Wh_j
+        e_l = (Z * self.a_l).sum(dim=1)
+        e_r = (Z * self.a_r).sum(dim=1)
 
-# kernel path: /tmp/torchinductor_jxin/74/c74tkkadtzl7tjnzpfwuh4ued5b6e3dyswjamnxxtbnzhx4bl6yx.py
-# Original ATen: aten.add
+        tmp1 = e_l.index_select(0, row)
+        tmp2 = e_r.index_select(0, col)
+        
+        e = tmp1 + tmp2
 
-# aten.add => add
-triton_fused_add_2 = async_compile.triton('''
-import triton
-import triton.language as tl
-from torch._inductor.ir import ReductionHint
-from torch._inductor.ir import TileHint
-from torch._inductor.triton_ops.autotune import pointwise
-from torch._inductor.utils import instance_descriptor
+        a = F.leaky_relu(e)
+        tmp = dglsp.val_like(A_hat, a)
+        A_atten = self.softmax(tmp)
 
-@pointwise(size_hints=[4194304], filename=__file__, meta={'signature': {0: '*fp32', 1: '*fp32', 2: '*fp32', 3: 'i32'}, 'device': 0, 'constants': {}, 'mutated_arg_names': [], 'configs': [instance_descriptor(divisible_by_16=(0, 1, 2, 3), equal_to_1=())]})
-@triton.jit
-def triton_(in_ptr0, in_ptr1, out_ptr0, xnumel, XBLOCK : tl.constexpr):
-    xnumel = 3727440
-    xoffset = tl.program_id(0) * XBLOCK
-    xindex = xoffset + tl.arange(0, XBLOCK)[:]
-    xmask = xindex < xnumel
-    x2 = xindex
-    x0 = xindex % 16
-    tmp0 = tl.load(in_ptr0 + (x2), xmask)
-    tmp1 = tl.load(in_ptr1 + (x0), xmask)
-    tmp2 = tmp0 + tmp1
-    tl.store(out_ptr0 + (x2 + tl.zeros([XBLOCK], tl.int32)), tmp2, xmask)
-''')
+        a_drop = self.dropout(self.foo3(A_atten))
+        A_atten = dglsp.val_like(A_atten, a_drop)
+        return dglsp.bspmm(A_atten, Z)
+    
+    def jittable(self):
+        self.softmax = python_ops.py_softmax
+        return self
+
+class GAT(nn.Module):
+    def __init__(
+        self, in_size, out_size, hidden_size=8, num_heads=8, dropout=0.6
+    ):
+        super().__init__()
+
+        self.in_conv = GATConv(
+            in_size, hidden_size, num_heads=num_heads, dropout=dropout
+        )
+        self.out_conv = GATConv(
+            hidden_size * num_heads, out_size, num_heads=1, dropout=dropout
+        )
+
+    def forward(self, A, X):
+        # Flatten the head and feature dimension.
+        Z = F.elu(self.in_conv(A, X)).flatten(1)
+        # Average over the head dimension.
+        Z = self.out_conv(A, Z).mean(-1)
+        return Z
 
 
-async_compile.wait(globals())
-del async_compile
+def evaluate(g, pred):
+    label = g.ndata["label"]
+    val_mask = g.ndata["val_mask"]
+    test_mask = g.ndata["test_mask"]
 
-def call(args):
-    primals_1, primals_2, primals_3, primals_4, primals_5 = args
-    args.clear()
-    with torch.cuda._DeviceGuard(0):
-        torch.cuda.set_device(0) # no-op to ensure context
-        buf0 = empty_strided((232965, 16), (16, 1), device='cuda', dtype=torch.float32)
-        extern_kernels.mm(primals_5, as_strided(primals_1, (602, 16), (1, 602)), out=buf0)
-        del primals_1
-        buf1 = empty_strided((232965, 16), (16, 1), device='cuda', dtype=torch.float32)
-        buf2 = empty_strided((232965, 16), (16, 1), device='cuda', dtype=torch.float32)
-        stream0 = get_cuda_stream(0)
-        triton_fused_index_select_mul_new_zeros_scatter_add_0.run(buf1, buf2, 3727440, grid=grid(3727440), stream=stream0)
-        triton_fused_index_select_mul_scatter_add_1.run(primals_3, primals_4, buf0, buf2, 1837581712, grid=grid(1837581712), stream=stream0)
-        buf4 = buf0; del buf0  # reuse
-        triton_fused_add_2.run(buf2, primals_2, buf4, 3727440, grid=grid(3727440), stream=stream0)
-        del buf2
-        del primals_2
-        return (buf4, primals_4, primals_5, as_strided(primals_3, (114848857, ), (1, )), as_strided(primals_3, (114848857, 16), (1, 0), 114848857), buf1, )
+    # Compute accuracy on validation/test set.
+    val_acc = (pred[val_mask] == label[val_mask]).float().mean()
+    test_acc = (pred[test_mask] == label[test_mask]).float().mean()
+    return val_acc, test_acc
 
 
-def benchmark_compiled_module():
-    from torch._dynamo.testing import rand_strided
-    from torch._inductor.utils import print_performance
-    primals_1 = rand_strided((16, 602), (602, 1), device='cuda:0', dtype=torch.float32)
-    primals_2 = rand_strided((16, ), (1, ), device='cuda:0', dtype=torch.float32)
-    primals_3 = rand_strided((2, 114848857), (114848857, 1), device='cuda:0', dtype=torch.int64)
-    primals_4 = rand_strided((114848857, ), (1, ), device='cuda:0', dtype=torch.float32)
-    primals_5 = rand_strided((232965, 602), (602, 1), device='cuda:0', dtype=torch.float32)
-    print_performance(lambda: call([primals_1, primals_2, primals_3, primals_4, primals_5]))
+dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+dataset = FlickrDataset()
+g = dataset[0].to(dev)
+
+indices = torch.stack(g.edges())
+N = g.num_nodes()
+A = dglsp.spmatrix(indices, shape=(N, N))
+
+I = dglsp.identity(A.shape, device=dev)
+A_hat = A + I
+
+X = g.ndata["feat"]
+in_size = X.shape[1]
+out_size = dataset.num_classes
+model = GAT(in_size, out_size).to(dev)
 
 
-if __name__ == "__main__":
-    import argparse
-    from torch._inductor.utils import benchmark_all_kernels
+import copy
+def jittable(model):
+    return_model = copy.deepcopy(model)
+    if hasattr(return_model, 'jittable'):
+        return return_model.jittable()
+    for k, v in return_model._modules.items():
+        if "Jittable" in v.__class__.__name__:
+            assert 0, "Auto Profiler requires Layer not jittabled"
+        if hasattr(v, 'jittable'):
+            setattr(return_model, k, v.jittable())
+    return return_model
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--benchmark-kernels", "-k", action="store_true", help="Whether to benchmark each individual kernels")
-    parser.add_argument("--benchmark-all-configs", "-c", action="store_true", help="Whether to benchmark each individual config for a kernel")
-    args = parser.parse_args()
+model = jittable(model)
 
-    if args.benchmark_kernels:
-        benchmark_all_kernels('None', args.benchmark_all_configs)
-    else:
-        benchmark_compiled_module()
+model = torch.compile(model)
+
+import ctypes
+
+import ftxj.profiler as profiler
+tracer = profiler.Tracer()
+
+def train():
+    global model
+    global X
+    A = A_hat.to('cuda')
+    X = X.to('cuda')
+    label = g.ndata["label"].to('cuda')
+    train_mask = g.ndata["train_mask"].to('cuda')
+    optimizer = Adam(model.parameters(), lr=1e-2, weight_decay=5e-4)
+    for epoch in range(30):
+        # Forward.
+        model.train()
+        if epoch == 0:
+            _cudart = ctypes.CDLL('libcudart.so')
+            ret = _cudart.cudaProfilerStart()
+            tracer.start()
+
+        torch.cuda.nvtx.range_push(str(epoch) + "-E2E")
+
+        torch.cuda.nvtx.range_push(str(epoch) + "-forward")
+        logits = model(A, X)
+        torch.cuda.nvtx.range_pop()
+
+
+
+        # Compute loss with nodes in training set.
+        loss = F.cross_entropy(logits[train_mask], label[train_mask])
+
+        # Backward.
+        optimizer.zero_grad()
+        torch.cuda.nvtx.range_push(str(epoch) + "-backward")
+        loss.backward()
+        torch.cuda.nvtx.range_pop()
+
+        torch.cuda.nvtx.range_push(str(epoch) + "-step")
+        optimizer.step()
+        torch.cuda.nvtx.range_pop()
+        # Compute prediction.
+        model.eval()
+        torch.cuda.nvtx.range_push(str(epoch) + "-eval")
+        logits = model(A_hat, X)
+        pred = logits.argmax(dim=1)
+        # Evaluate the prediction.
+        val_acc, test_acc = evaluate(g, pred)
+        torch.cuda.nvtx.range_pop()
+
+        torch.cuda.nvtx.range_pop()
+
+        if epoch == 1:
+            ret = _cudart.cudaProfilerStop()
+            print("train stop")
+            tracer.stop()
+
+        print(
+            f"In epoch {epoch}, loss: {loss:.3f}, val acc: {val_acc:.3f}, test"
+            f" acc: {test_acc:.3f}"
+        )
+
+
+
+
+train()
+
+
+# tracer.print()
+
+# tracer.save()
+
+def to_json(x):
+    data = x.data()
+    import json
+    data2 = {}
+    data2['traceEvents'] = data
+    data2 = json.dumps(data2, indent=4)
+    with open("sample5.json", "w") as outfile:
+        outfile.write(data2)
+
+
+
+to_json(tracer)

@@ -1,15 +1,7 @@
-import viztracer
+import torch
 
-tracer = viztracer.VizTracer()
-
-
-def fib(a):
-    print("fib ", a)
-    if a == 1:
-        return 1
-    if a == 2:
-        return 2
-    return fib(a - 1) + fib(a - 2)
-
-print("set")
-tracer.start()
+def mySad(x):
+    print("3")
+    x = torch.add(x, x)
+    x = x * 2
+    return x

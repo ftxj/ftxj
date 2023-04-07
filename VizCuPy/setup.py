@@ -6,6 +6,8 @@ setuptools.setup(
     author="Jie Xin",
     author_email="cs.xinjie@gmail.com",
     description="A profiling tool for python & cuda ",
+    packages=setuptools.find_packages("python"),
+    package_dir={"": "python"},
     ext_modules=[
         setuptools.Extension(
             "ftxj.profiler",
