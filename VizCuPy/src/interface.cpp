@@ -11,6 +11,7 @@ namespace profiler {
 struct Interface {
   PyObject_HEAD;
   std::vector<PythonTracer*> tracer_;
+  std::vector<CudaTracer*> cu_tracer_;
   bool activate_{false};
 };
 
@@ -54,13 +55,34 @@ static PyObject* InterfaceDump(Interface* self) {
   for (auto tracer : self->tracer_) {
     PyList_Append(lst, tracer->toPyObj());
   }
+  for (auto tracer : self->cu_tracer_) {
+    PyList_Append(lst, tracer->toPyObj());
+  }
   return lst;
+}
+
+static PyObject* InterfaceEnableCuda(Interface* self) {
+  CudaTracer* tracer = new CudaTracer();
+  self->cu_tracer_.push_back(tracer);
+  tracer->start(self->tracer_[0]->getMeta());
+  Py_INCREF(tracer);
+  Py_RETURN_NONE;
+}
+
+static PyObject* InterfaceDisableCuda(Interface* self) {
+  auto tracer_number = self->tracer_.size();
+  if (tracer_number > 0) {
+    self->tracer_[tracer_number - 1]->stop();
+  }
+  Py_RETURN_NONE;
 }
 
 static PyMethodDef PyInterfaceMethods[] = {
     {"start", (PyCFunction)InterfaceStart, METH_VARARGS, NULL},
     {"stop", (PyCFunction)InterfaceStop, METH_VARARGS, NULL},
     {"dump", (PyCFunction)InterfaceDump, METH_VARARGS, NULL},
+    {"enable_cuda", (PyCFunction)InterfaceEnableCuda, METH_VARARGS, NULL},
+    {"disable_cuda", (PyCFunction)InterfaceDisableCuda, METH_VARARGS, NULL},
     {NULL, NULL, 0, NULL}};
 
 static PyTypeObject TracerInterfaceType = {

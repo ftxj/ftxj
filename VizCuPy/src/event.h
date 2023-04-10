@@ -15,7 +15,9 @@ enum class EventType : uint8_t {
   PyCall,
   PyCCall,
   PyReturn,
-  PyCReturn
+  PyCReturn,
+  CudaCall,
+  CudaReturn
 };
 
 struct MetaEvent {

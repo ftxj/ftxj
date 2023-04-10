@@ -5,6 +5,7 @@ python/ftxj.egg-info/PKG-INFO
 python/ftxj.egg-info/SOURCES.txt
 python/ftxj.egg-info/dependency_links.txt
 python/ftxj.egg-info/top_level.txt
+src/cuda_tracer.cpp
 src/event.cpp
 src/interface.cpp
 src/python_tracer.cpp

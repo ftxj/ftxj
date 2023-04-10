@@ -35,10 +35,12 @@ PyObject* Event::toPyObj(const MetaEvent* meta) {
   switch (type) {
     case EventType::PyCall:
     case EventType::PyCCall:
+    case EventType::CudaCall:
       PyDict_SetItemString(arg_dict, "ph", PyUnicode_FromString("B"));
       break;
     case EventType::PyReturn:
     case EventType::PyCReturn:
+    case EventType::CudaReturn:
       PyDict_SetItemString(arg_dict, "ph", PyUnicode_FromString("E"));
       break;
     default:

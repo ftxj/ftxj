@@ -78,7 +78,7 @@ void PythonTracer::start() {
     return;
   }
   active_ = true;
-  MetaEvent* meta = new MetaEvent();
+  meta = new MetaEvent();
   clock_gettime(CLOCK_REALTIME, &meta->tp_base);
   meta->pid = GlobalContext::tracing_id;
   meta->tid = 0;
@@ -131,6 +131,9 @@ void PythonTracer::stop() {
   }
 }
 
+MetaEvent* PythonTracer::getMeta() {
+  return meta;
+}
 PyObject* PythonTracer::toPyObj() {
   return local_results_->record_->toPyObj();
 }

@@ -1,5 +1,8 @@
 import setuptools
 
+from torch.utils.cpp_extension import (CUDA_HOME, BuildExtension, CppExtension,
+                                       CUDAExtension)
+
 setuptools.setup(
     name="ftxj",
     version="0.0.1",
@@ -9,12 +12,16 @@ setuptools.setup(
     packages=setuptools.find_packages("python"),
     package_dir={"": "python"},
     ext_modules=[
-        setuptools.Extension(
+        CUDAExtension(
             "ftxj.profiler",
+            include_dirs = ['/usr/local/cuda/include'],
+            libraries = ['cuda', 'cupti'],
+            library_dirs = ['/usr/local/cuda/lib64'],
             sources=[
                 "src/event.cpp",
                 "src/interface.cpp",
                 "src/python_tracer.cpp",
+                "src/cuda_tracer.cpp",
                 "src/queue.cpp",
                 "src/util.cpp"
             ],

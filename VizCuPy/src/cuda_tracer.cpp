@@ -1,4 +1,6 @@
 #include <Python.h>
+#include <cuda.h>
+#include <cupti.h>
 #include <frameobject.h>
 #include <ctime>
 #include <vector>
@@ -11,148 +13,165 @@
 namespace ftxj {
 namespace profiler {
 
-namespace GlobalContext {
+#define DRIVER_API_CALL(apiFuncCall)                           \
+  do {                                                         \
+    CUresult _status = apiFuncCall;                            \
+    if (_status != CUDA_SUCCESS) {                             \
+      const char* errstr;                                      \
+      cuGetErrorString(_status, &errstr);                      \
+      fprintf(                                                 \
+          stderr,                                              \
+          "%s:%d: error: function %s failed with error %s.\n", \
+          __FILE__,                                            \
+          __LINE__,                                            \
+          #apiFuncCall,                                        \
+          errstr);                                             \
+      exit(EXIT_FAILURE);                                      \
+    }                                                          \
+  } while (0)
 
-static int tracing_id = 0;
-static void update() {
-  tracing_id++;
-}
+#define RUNTIME_API_CALL(apiFuncCall)                          \
+  do {                                                         \
+    cudaError_t _status = apiFuncCall;                         \
+    if (_status != cudaSuccess) {                              \
+      fprintf(                                                 \
+          stderr,                                              \
+          "%s:%d: error: function %s failed with error %s.\n", \
+          __FILE__,                                            \
+          __LINE__,                                            \
+          #apiFuncCall,                                        \
+          cudaGetErrorString(_status));                        \
+      exit(EXIT_FAILURE);                                      \
+    }                                                          \
+  } while (0)
 
-} // namespace GlobalContext
+#define CUPTI_CALL(call)                                       \
+  do {                                                         \
+    CUptiResult _status = call;                                \
+    if (_status != CUPTI_SUCCESS) {                            \
+      const char* errstr;                                      \
+      cuptiGetResultString(_status, &errstr);                  \
+      fprintf(                                                 \
+          stderr,                                              \
+          "%s:%d: error: function %s failed with error %s.\n", \
+          __FILE__,                                            \
+          __LINE__,                                            \
+          #call,                                               \
+          errstr);                                             \
+      exit(EXIT_FAILURE);                                      \
+    }                                                          \
+  } while (0)
 
-struct TracerLocalResult {
+struct CudaTracerLocalResult {
   RecordQueue* record_{nullptr};
   struct timespec t_s_;
   struct timespec t_e_;
-  TracerLocalResult(const size_t& size, const MetaEvent* m) {
+  CudaTracerLocalResult(const size_t& size, const MetaEvent* m) {
     record_ = new RecordQueue(size, m);
   }
 };
 
-PythonTracer::PythonTracer() {}
+namespace detail {
 
-PythonTracer::~PythonTracer() {
-  if (active_) {
-    stop();
-  }
+static PyObject* toPyStr(const char* str) {
+  auto name = PyUnicode_FromString(str);
+  return name;
 }
 
-int PythonTracer::profFn(
-    PyObject* obj,
-    PyFrameObject* frame,
-    int what,
-    PyObject* arg) {
-  auto tracer = reinterpret_cast<PythonTracer*>(obj);
-  if (!tracer) {
-    printf("unknow bugs \n");
-    exit(-1);
+void traceRuntimeAPI(
+    CudaTracerLocalResult* data,
+    CUpti_CallbackId cbid,
+    const CUpti_CallbackData* cbInfo) {
+  static constexpr auto E1 = EventType::CudaCall;
+  static constexpr auto E2 = EventType::CudaReturn;
+  EventType E;
+  if (cbInfo->callbackSite == CUPTI_API_ENTER) {
+    E = E1;
+  } else if (cbInfo->callbackSite == CUPTI_API_EXIT) {
+    E = E2;
+  } else {
+    printf("Unkown cbInfo type\n");
   }
-  switch (what) {
-    case PyTrace_CALL:
-      tracer->recordPyCall(frame);
+  switch (cbid) {
+    case CUPTI_RUNTIME_TRACE_CBID_cudaLaunch_v3020:
+    case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchKernel_v7000:
+      data->record_->record(E, toPyStr(cbInfo->symbolName));
       break;
-
-    case PyTrace_C_CALL:
-      tracer->recordPyCCall(frame, arg);
+    case CUPTI_RUNTIME_TRACE_CBID_cudaDeviceSynchronize_v3020:
+      printf("sync kernel %s\n", cbInfo->functionName);
       break;
-
-    case PyTrace_EXCEPTION:
-    case PyTrace_RETURN:
-      tracer->recordPyReturn(frame);
+    case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy_v3020:
+      printf("cuda memcpy\n", cbInfo->functionName);
       break;
-
-    case PyTrace_C_EXCEPTION:
-    case PyTrace_C_RETURN:
-      tracer->recordPyCReturn(frame, arg);
+    case CUPTI_DRIVER_TRACE_CBID_cuDeviceGet:
+    case CUPTI_DRIVER_TRACE_CBID_cuCtxSynchronize:
+    case CUPTI_DRIVER_TRACE_CBID_cuStreamSynchronize_ptsz:
+    case CUPTI_DRIVER_TRACE_CBID_cuCtxCreate:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemPeerGetDevicePointer:
+    case CUPTI_DRIVER_TRACE_CBID_cuModuleLoadDataEx:
+    case CUPTI_DRIVER_TRACE_CBID_cu64MemHostGetDevicePointer:
+    case CUPTI_DRIVER_TRACE_CBID_cu64GraphicsResourceGetMappedPointer:
       break;
-
     default:
-      printf("unknow event when tracing\n");
+      printf("unknow API when tracing %d\n", cbid);
       exit(-1);
   }
-  return 0;
 }
 
-void PythonTracer::start() {
-  if (active_) {
-    return;
-  }
-  active_ = true;
-  MetaEvent* meta = new MetaEvent();
-  clock_gettime(CLOCK_REALTIME, &meta->tp_base);
-  meta->pid = GlobalContext::tracing_id;
-  meta->tid = 0;
-  local_results_ = new TracerLocalResult(100000, meta);
-
-  std::vector<PyFrameObject*> current_stack;
-  auto frame = PyEval_GetFrame();
-  size_t depth = 0; // Make sure we can't infinite loop.
-  while (frame != nullptr && depth <= 128) {
-    Py_INCREF(frame);
-    current_stack.push_back(frame);
-    frame = PyFrame_GetBack(frame);
-    depth++;
-  }
-
-  for (auto it = current_stack.rbegin(); it != current_stack.rend(); it++) {
-    recordPyCall(*it);
-
-    Py_DECREF(*it);
-  }
-  PyEval_SetProfile(PythonTracer::profFn, (PyObject*)this);
-  clock_gettime(CLOCK_REALTIME, &local_results_->t_s_);
-  GlobalContext::update();
-}
-
-void PythonTracer::stop() {
-  if (active_) {
-    PyEval_SetProfile(nullptr, nullptr);
-    active_ = false;
-    clock_gettime(CLOCK_REALTIME, &local_results_->t_e_);
-    auto frame = PyEval_GetFrame();
-    static constexpr auto E = EventType::PyReturn;
-    local_results_->record_->record(
-        E, Util::getTraceNameFromFrame(frame, ".stop"));
-
-    std::vector<PyFrameObject*> current_stack;
-    size_t depth = 0; // Make sure we can't infinite loop.
-    while (frame != nullptr && depth <= 128) {
-      Py_INCREF(frame);
-      current_stack.push_back(frame);
-      frame = PyFrame_GetBack(frame);
-      depth++;
-    }
-
-    for (auto it = current_stack.rbegin(); it != current_stack.rend(); it++) {
-      recordPyReturn(*it);
-
-      Py_DECREF(*it);
-    }
+void CUPTIAPI getTimestampCallback(
+    void* userdata,
+    CUpti_CallbackDomain domain,
+    CUpti_CallbackId cbid,
+    const CUpti_CallbackData* cbInfo) {
+  CudaTracerLocalResult* traceData = (CudaTracerLocalResult*)userdata;
+  switch (domain) {
+    case CUPTI_CB_DOMAIN_DRIVER_API:
+      printf("driver api\n");
+      break;
+    case CUPTI_CB_DOMAIN_RUNTIME_API:
+      traceRuntimeAPI(traceData, cbid, cbInfo);
+      break;
+    default:
+      printf("unknow API when tracing %d\n", domain);
   }
 }
 
-PyObject* PythonTracer::toPyObj() {
+} // namespace detail
+
+static CUpti_SubscriberHandle subscriber;
+
+CudaTracer::CudaTracer() {}
+
+void CudaTracer::start(MetaEvent* m) {
+  if (!activate_) {
+    meta = new MetaEvent();
+    meta->tp_base = m->tp_base;
+    meta->pid = 2;
+    meta->tid = 0;
+    local_results_ = new CudaTracerLocalResult(100000, meta);
+    activate_ = true;
+    CUPTI_CALL(cuptiSubscribe(
+        &subscriber,
+        (CUpti_CallbackFunc)detail::getTimestampCallback,
+        local_results_));
+    DRIVER_API_CALL(cuInit(0));
+    CUPTI_CALL(cuptiEnableDomain(1, subscriber, CUPTI_CB_DOMAIN_RUNTIME_API));
+  }
+}
+
+void CudaTracer::stop() {
+  if (activate_) {
+    CUPTI_CALL(cuptiUnsubscribe(subscriber));
+    activate_ = false;
+  }
+}
+
+CudaTracer::~CudaTracer() {
+  delete local_results_;
+}
+
+PyObject* CudaTracer::toPyObj() {
   return local_results_->record_->toPyObj();
-}
-
-void PythonTracer::recordPyCall(PyFrameObject* frame) {
-  static constexpr auto E = EventType::PyCall;
-  local_results_->record_->record(E, Util::getTraceNameFromFrame(frame));
-}
-
-void PythonTracer::recordPyCCall(PyFrameObject* frame, PyObject* args) {
-  static constexpr auto E = EventType::PyCCall;
-  local_results_->record_->record(E, Util::getTraceNameFromFrame(frame, args));
-}
-
-void PythonTracer::recordPyReturn(PyFrameObject* frame) {
-  static constexpr auto E = EventType::PyReturn;
-  local_results_->record_->record(E, Util::getTraceNameFromFrame(frame));
-}
-
-void PythonTracer::recordPyCReturn(PyFrameObject* frame, PyObject* args) {
-  static constexpr auto E = EventType::PyCReturn;
-  local_results_->record_->record(E, Util::getTraceNameFromFrame(frame, args));
 }
 
 } // namespace profiler

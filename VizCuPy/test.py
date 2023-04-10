@@ -19,19 +19,25 @@ def fib(a):
 
 import ftxj.profiler as profiler
 
-x = torch.randn(10000,10000).to('cuda')
 tracer = profiler.Tracer()
+
 tracer.start()
+tracer.enable_cuda()
+
+x = torch.randn(10000,10000).to('cuda')
+
 x = torch.add(x, x)
-test2.mySad(x)
-tracer.stop()
+
+x = torch.mul(x, x)
 
 
-x = torch.randn(20000,20000).to('cuda')
-tracer.start()
-x = torch.add(x, x)
 test2.mySad(x)
+
 tracer.stop()
+tracer.disable_cuda()
+
+
+
 
 
 def to_json(x):

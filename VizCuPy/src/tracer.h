@@ -1,9 +1,9 @@
 #pragma once
-
 namespace ftxj {
 namespace profiler {
 
 struct TracerLocalResult;
+struct MetaEvent;
 
 struct PythonTracer {
   PyObject_HEAD;
@@ -20,6 +20,7 @@ struct PythonTracer {
   void start();
   void stop();
   PyObject* toPyObj();
+  MetaEvent* getMeta();
 
  private:
   void recordPyCall(PyFrameObject* frame);
@@ -28,6 +29,25 @@ struct PythonTracer {
   void recordPyCReturn(PyFrameObject* frame, PyObject* arg);
   bool active_{false};
   TracerLocalResult* local_results_{nullptr};
+  MetaEvent* meta{nullptr};
+};
+
+struct CudaTracerLocalResult;
+struct CudaTracer {
+  PyObject_HEAD;
+
+ public:
+  CudaTracer();
+  ~CudaTracer();
+
+  void start(MetaEvent*);
+  void stop();
+  PyObject* toPyObj();
+
+ private:
+  bool activate_{false};
+  CudaTracerLocalResult* local_results_{nullptr};
+  MetaEvent* meta{nullptr};
 };
 
 } // namespace profiler
