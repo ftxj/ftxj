@@ -153,9 +153,11 @@ def train():
     for epoch in range(30):
         # Forward.
         model.train()
-        if epoch == 0:
+        if epoch == 1:
             _cudart = ctypes.CDLL('libcudart.so')
             ret = _cudart.cudaProfilerStart()
+            tracer.start()
+        if epoch == 2:
             tracer.start()
 
         torch.cuda.nvtx.range_push(str(epoch) + "-E2E")
@@ -194,6 +196,9 @@ def train():
             print("train stop")
             tracer.stop()
 
+        if epoch == 2:
+            tracer.stop()
+
         print(
             f"In epoch {epoch}, loss: {loss:.3f}, val acc: {val_acc:.3f}, test"
             f" acc: {test_acc:.3f}"
@@ -210,12 +215,15 @@ train()
 # tracer.save()
 
 def to_json(x):
-    data = x.data()
+    data = x.dump()
+    k = []
+    for l in data:
+        k = k + l
     import json
     data2 = {}
-    data2['traceEvents'] = data
+    data2['traceEvents'] = k
     data2 = json.dumps(data2, indent=4)
-    with open("sample5.json", "w") as outfile:
+    with open("sample7.json", "w") as outfile:
         outfile.write(data2)
 
 

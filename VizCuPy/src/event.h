@@ -1,18 +1,37 @@
 
-#ifndef __EVENTNODE_H__
-#define __EVENTNODE_H__
-
+#pragma once
 #include <Python.h>
-#include <string>
+#include <frameobject.h>
+#include <ctime>
+#include <vector>
 
-class EventBase {};
+namespace ftxj {
+namespace profiler {
 
-using time_gap_t = unsigned long long;
-
-class PyFunctionEvent : public EventBase {
-  static std::string category_name = "Python Function";
+enum class EventType : uint8_t {
+  TorchOp = 0,
+  Allocation,
+  OutOfMemory,
+  PyCall,
+  PyCCall,
+  PyReturn,
+  PyCReturn
 };
 
-class CudaFunctionEvent : public EventBase {};
+struct MetaEvent {
+  struct timespec tp_base;
+  int pid;
+  int tid;
+};
 
-#endif
+struct Event {
+  EventType type;
+  PyObject* name;
+  struct timespec tp;
+  Event() {}
+  Event(const EventType&, PyObject*);
+  PyObject* toPyObj(const MetaEvent*);
+};
+
+} // namespace profiler
+} // namespace ftxj

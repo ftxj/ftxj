@@ -4,6 +4,7 @@
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
 # User-specific files
+VizCuPy/.nfs00000000b7204af800002bd2
 VizCuPy/ftxj.egg-info/
 dist/
 VizCuPy/vizcupy.egg-info/

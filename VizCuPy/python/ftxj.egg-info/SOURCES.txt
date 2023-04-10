@@ -5,4 +5,8 @@ python/ftxj.egg-info/PKG-INFO
 python/ftxj.egg-info/SOURCES.txt
 python/ftxj.egg-info/dependency_links.txt
 python/ftxj.egg-info/top_level.txt
-src/profiler_base.cpp
+src/event.cpp
+src/interface.cpp
+src/python_tracer.cpp
+src/queue.cpp
+src/util.cpp

@@ -12,7 +12,11 @@ setuptools.setup(
         setuptools.Extension(
             "ftxj.profiler",
             sources=[
-                "src/profiler_base.cpp"
+                "src/event.cpp",
+                "src/interface.cpp",
+                "src/python_tracer.cpp",
+                "src/queue.cpp",
+                "src/util.cpp"
             ],
         )
     ],

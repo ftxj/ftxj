@@ -1,7 +1,6 @@
 import time
 import torch
 import test2
-x = torch.randn(10000,10000).to('cuda')
 
 
 def fib3(x):
@@ -19,36 +18,34 @@ def fib(a):
 
 
 import ftxj.profiler as profiler
+
+x = torch.randn(10000,10000).to('cuda')
 tracer = profiler.Tracer()
-
-# from viztracer import VizTracer
-# tracer = VizTracer()
-
-
-
-x = x * 2
-
 tracer.start()
-
 x = torch.add(x, x)
-
-x = torch.zeros(20, 20)
-
 test2.mySad(x)
-
 tracer.stop()
 
-# tracer.print()
 
-# tracer.save()
+x = torch.randn(20000,20000).to('cuda')
+tracer.start()
+x = torch.add(x, x)
+test2.mySad(x)
+tracer.stop()
+
 
 def to_json(x):
-    data = x.data()
+    data = x.dump()
+    k = []
+    for l in data:
+        k = k + l
     import json
     data2 = {}
-    data2['traceEvents'] = data
+    data2['traceEvents'] = k
     data2 = json.dumps(data2, indent=4)
     print(data2)
+    # with open("sample6.json", "w") as outfile:
+    #     outfile.write(data2)
 
 to_json(tracer)
 

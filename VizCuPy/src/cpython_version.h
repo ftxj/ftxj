@@ -33,4 +33,23 @@ PyFrame_GetCode(PyFrameObject* frame) {
 }
 #endif
 
+// bpo-42262 added Py_XNewRef() to Python 3.10.0a3
+#if PY_VERSION_HEX < 0x030A00A3 && !defined(Py_XNewRef)
+PYCAPI_COMPAT_STATIC_INLINE(PyObject*)
+_Py_XNewRef(PyObject* obj) {
+  Py_XINCREF(obj);
+  return obj;
+}
+#define Py_XNewRef(obj) _Py_XNewRef(_PyObject_CAST(obj))
+#endif
+
+// bpo-40421 added PyFrame_GetBack() to Python 3.9.0b1
+#if PY_VERSION_HEX < 0x030900B1 && !defined(PYPY_VERSION)
+PYCAPI_COMPAT_STATIC_INLINE(PyFrameObject*)
+PyFrame_GetBack(PyFrameObject* frame) {
+  assert(frame != _Py_NULL);
+  return _Py_CAST(PyFrameObject*, Py_XNewRef(frame->f_back));
+}
+#endif
+
 #endif
