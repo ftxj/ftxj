@@ -28,6 +28,8 @@ x = torch.randn(10000,10000).to('cuda')
 
 x = torch.add(x, x)
 
+tracer.timeline_split()
+
 x = torch.mul(x, x)
 
 
@@ -50,8 +52,8 @@ def to_json(x):
     data2['traceEvents'] = k
     data2 = json.dumps(data2, indent=4)
     print(data2)
-    # with open("sample6.json", "w") as outfile:
-    #     outfile.write(data2)
+    with open("sample6.json", "w") as outfile:
+        outfile.write(data2)
 
 to_json(tracer)
 

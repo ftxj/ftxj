@@ -17,10 +17,9 @@ struct PythonTracer {
       int what,
       PyObject* arg);
 
-  void start();
+  void start(MetaEvent*);
   void stop();
   PyObject* toPyObj();
-  MetaEvent* getMeta();
 
  private:
   void recordPyCall(PyFrameObject* frame);

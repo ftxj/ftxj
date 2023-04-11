@@ -3,6 +3,7 @@
 #include <ctime>
 #include <vector>
 #include "cpython_version.h"
+#include "event.h"
 #include "tracer.h"
 
 namespace ftxj {
@@ -12,29 +13,93 @@ struct Interface {
   PyObject_HEAD;
   std::vector<PythonTracer*> tracer_;
   std::vector<CudaTracer*> cu_tracer_;
+  std::vector<MetaEvent*> meta_;
   bool activate_{false};
+  bool cu_activate_{false};
+  int currect_number{0};
 };
 
-static PyObject* InterfaceStart(Interface* self, PyObject* args) {
+namespace impl {
+void updateMeta(Interface* self) {
+  MetaEvent* meta = new MetaEvent();
+  clock_gettime(CLOCK_REALTIME, &meta->tp_base);
+  meta->pid = self->meta_.size();
+  meta->tid = 0;
+  self->meta_.push_back(meta);
+  self->currect_number = self->meta_.size();
+}
+
+void pyTracerStart(Interface* self) {
   if (self->activate_) {
-    printf("Only a tracer can be activate at a time\n");
+    printf("Only one PyTracer can be activate at a time\n");
     exit(-1);
   }
   self->activate_ = true;
+  updateMeta(self);
   PythonTracer* tracer = new PythonTracer();
   Py_INCREF(tracer);
-  tracer->start();
+  tracer->start(self->meta_[self->currect_number - 1]);
   self->tracer_.push_back(tracer);
+}
+
+void cudaTracerStart(Interface* self) {
+  if (self->cu_activate_) {
+    printf("Only one CudaTracer can be activate at a time\n");
+    exit(-1);
+  }
+  self->cu_activate_ = true;
+  CudaTracer* tracer = new CudaTracer();
+  Py_INCREF(tracer);
+  tracer->start(self->meta_[self->currect_number - 1]);
+  self->cu_tracer_.push_back(tracer);
+}
+
+void pyTracerStop(Interface* self) {
+  if (self->activate_ && self->currect_number > 0) {
+    self->tracer_[self->currect_number - 1]->stop();
+  }
+  self->activate_ = false;
+}
+
+void cudaTracerStop(Interface* self) {
+  if (self->cu_activate_ && self->currect_number > 0) {
+    self->cu_tracer_[self->currect_number - 1]->stop();
+  }
+  self->cu_activate_ = false;
+}
+
+} // namespace impl
+
+static PyObject* InterfaceStart(Interface* self, PyObject* args) {
+  impl::pyTracerStart(self);
   Py_RETURN_NONE;
 }
 
 static PyObject* InterfaceStop(Interface* self, PyObject* args) {
-  auto tracer_number = self->tracer_.size();
-  if (self->activate_ && tracer_number > 0) {
-    self->tracer_[tracer_number - 1]->stop();
-  }
+  impl::pyTracerStop(self);
+  Py_RETURN_NONE;
+}
 
-  self->activate_ = false;
+static PyObject* InterfaceEnableCuda(Interface* self) {
+  impl::cudaTracerStart(self);
+  Py_RETURN_NONE;
+}
+
+static PyObject* InterfaceDisableCuda(Interface* self) {
+  impl::cudaTracerStop(self);
+  Py_RETURN_NONE;
+}
+
+static PyObject* InterfaceTimeSplit(Interface* self) {
+  if (self->currect_number <= 0) {
+    printf("Please Call Split after tracer start!\n");
+    printf("If you have done this, this will be a bug.!\n");
+    exit(-1);
+  }
+  impl::pyTracerStop(self);
+  impl::cudaTracerStop(self);
+  impl::pyTracerStart(self);
+  impl::cudaTracerStart(self);
   Py_RETURN_NONE;
 }
 
@@ -61,25 +126,10 @@ static PyObject* InterfaceDump(Interface* self) {
   return lst;
 }
 
-static PyObject* InterfaceEnableCuda(Interface* self) {
-  CudaTracer* tracer = new CudaTracer();
-  self->cu_tracer_.push_back(tracer);
-  tracer->start(self->tracer_[0]->getMeta());
-  Py_INCREF(tracer);
-  Py_RETURN_NONE;
-}
-
-static PyObject* InterfaceDisableCuda(Interface* self) {
-  auto tracer_number = self->tracer_.size();
-  if (tracer_number > 0) {
-    self->tracer_[tracer_number - 1]->stop();
-  }
-  Py_RETURN_NONE;
-}
-
 static PyMethodDef PyInterfaceMethods[] = {
     {"start", (PyCFunction)InterfaceStart, METH_VARARGS, NULL},
     {"stop", (PyCFunction)InterfaceStop, METH_VARARGS, NULL},
+    {"timeline_split", (PyCFunction)InterfaceTimeSplit, METH_VARARGS, NULL},
     {"dump", (PyCFunction)InterfaceDump, METH_VARARGS, NULL},
     {"enable_cuda", (PyCFunction)InterfaceEnableCuda, METH_VARARGS, NULL},
     {"disable_cuda", (PyCFunction)InterfaceDisableCuda, METH_VARARGS, NULL},

@@ -146,8 +146,8 @@ void CudaTracer::start(MetaEvent* m) {
   if (!activate_) {
     meta = new MetaEvent();
     meta->tp_base = m->tp_base;
-    meta->pid = 2;
-    meta->tid = 0;
+    meta->pid = m->pid;
+    meta->tid = 1;
     local_results_ = new CudaTracerLocalResult(100000, meta);
     activate_ = true;
     CUPTI_CALL(cuptiSubscribe(

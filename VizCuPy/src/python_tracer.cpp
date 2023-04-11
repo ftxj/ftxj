@@ -73,14 +73,15 @@ int PythonTracer::profFn(
   return 0;
 }
 
-void PythonTracer::start() {
+void PythonTracer::start(MetaEvent* m) {
   if (active_) {
     return;
   }
+  printf("I really start...\n");
   active_ = true;
   meta = new MetaEvent();
-  clock_gettime(CLOCK_REALTIME, &meta->tp_base);
-  meta->pid = GlobalContext::tracing_id;
+  meta->tp_base = m->tp_base;
+  meta->pid = m->pid;
   meta->tid = 0;
   local_results_ = new TracerLocalResult(100000, meta);
 
@@ -131,9 +132,6 @@ void PythonTracer::stop() {
   }
 }
 
-MetaEvent* PythonTracer::getMeta() {
-  return meta;
-}
 PyObject* PythonTracer::toPyObj() {
   return local_results_->record_->toPyObj();
 }
