@@ -20,6 +20,14 @@ enum class EventType : uint8_t {
   CudaReturn
 };
 
+enum Category {
+  None = 0,
+  Python = 1,
+  Cuda = 1 << 1,
+  Torch = 1 << 2,
+  DeepStack = 1 << 3
+}; // namespace Category
+
 struct MetaEvent {
   struct timespec tp_base;
   int pid;
@@ -29,9 +37,15 @@ struct MetaEvent {
 struct Event {
   EventType type;
   PyObject* name;
+  Event* caller;
+  int category;
   struct timespec tp;
   Event() {}
-  Event(const EventType&, PyObject*);
+  Event(
+      const EventType&,
+      PyObject*,
+      int cat = Category::None,
+      Event* e = nullptr);
   PyObject* toPyObj(const MetaEvent*);
 };
 

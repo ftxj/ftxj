@@ -33,7 +33,7 @@ PythonTracer::PythonTracer() {}
 
 PythonTracer::~PythonTracer() {
   if (active_) {
-    stop();
+    stop(true);
   }
 }
 
@@ -73,49 +73,17 @@ int PythonTracer::profFn(
   return 0;
 }
 
-void PythonTracer::start(MetaEvent* m) {
+void PythonTracer::start(bool from_py) {
   if (active_) {
     return;
   }
-  printf("I really start...\n");
   active_ = true;
   meta = new MetaEvent();
-  meta->tp_base = m->tp_base;
-  meta->pid = m->pid;
   meta->tid = 0;
-  local_results_ = new TracerLocalResult(100000, meta);
-
-  std::vector<PyFrameObject*> current_stack;
-  auto frame = PyEval_GetFrame();
-  size_t depth = 0; // Make sure we can't infinite loop.
-  while (frame != nullptr && depth <= 128) {
-    Py_INCREF(frame);
-    current_stack.push_back(frame);
-    frame = PyFrame_GetBack(frame);
-    depth++;
-  }
-
-  for (auto it = current_stack.rbegin(); it != current_stack.rend(); it++) {
-    recordPyCall(*it);
-
-    Py_DECREF(*it);
-  }
-  PyEval_SetProfile(PythonTracer::profFn, (PyObject*)this);
-  clock_gettime(CLOCK_REALTIME, &local_results_->t_s_);
-  GlobalContext::update();
-}
-
-void PythonTracer::stop() {
-  if (active_) {
-    PyEval_SetProfile(nullptr, nullptr);
-    active_ = false;
-    clock_gettime(CLOCK_REALTIME, &local_results_->t_e_);
-    auto frame = PyEval_GetFrame();
-    static constexpr auto E = EventType::PyReturn;
-    local_results_->record_->record(
-        E, Util::getTraceNameFromFrame(frame, ".stop"));
-
+  local_results_ = new TracerLocalResult(1000000, meta);
+  if (from_py) {
     std::vector<PyFrameObject*> current_stack;
+    auto frame = PyEval_GetFrame();
     size_t depth = 0; // Make sure we can't infinite loop.
     while (frame != nullptr && depth <= 128) {
       Py_INCREF(frame);
@@ -125,9 +93,49 @@ void PythonTracer::stop() {
     }
 
     for (auto it = current_stack.rbegin(); it != current_stack.rend(); it++) {
-      recordPyReturn(*it);
+      recordPyCall(*it);
 
       Py_DECREF(*it);
+    }
+  }
+  PyEval_SetProfile(PythonTracer::profFn, (PyObject*)this);
+  clock_gettime(CLOCK_REALTIME, &local_results_->t_s_);
+  GlobalContext::update();
+}
+
+void PythonTracer::updateMeta(MetaEvent* m) {
+  meta->tp_base = m->tp_base;
+  meta->pid = m->pid;
+}
+
+void PythonTracer::stop(bool from_py) {
+  if (active_) {
+    PyEval_SetProfile(nullptr, nullptr);
+    active_ = false;
+    clock_gettime(CLOCK_REALTIME, &local_results_->t_e_);
+    if (from_py) {
+      auto frame = PyEval_GetFrame();
+      static constexpr auto E = EventType::PyReturn;
+      local_results_->record_->record(
+          E,
+          Util::getTraceNameFromFrame(frame, ".stop"),
+          Category::Python,
+          local_results_->record_->top());
+      // std::vector<PyFrameObject*> current_stack;
+      // size_t depth = 0; // Make sure we can't infinite loop.
+      // while (frame != nullptr && depth <= 128) {
+      //   Py_INCREF(frame);
+      //   current_stack.push_back(frame);
+      //   frame = PyFrame_GetBack(frame);
+      //   depth++;
+      // }
+
+      // for (auto it = current_stack.rbegin(); it != current_stack.rend();
+      // it++) {
+      //   recordPyReturn(*it);
+
+      //   Py_DECREF(*it);
+      // }
     }
   }
 }
@@ -138,22 +146,42 @@ PyObject* PythonTracer::toPyObj() {
 
 void PythonTracer::recordPyCall(PyFrameObject* frame) {
   static constexpr auto E = EventType::PyCall;
-  local_results_->record_->record(E, Util::getTraceNameFromFrame(frame));
+  curect_py_depth++;
+  int cat = Category::Python;
+  if (curect_py_depth > 10) {
+    cat |= Category::DeepStack;
+  }
+  local_results_->record_->record(
+      E, Util::getTraceNameFromFrame(frame), cat, nullptr);
 }
 
 void PythonTracer::recordPyCCall(PyFrameObject* frame, PyObject* args) {
   static constexpr auto E = EventType::PyCCall;
-  local_results_->record_->record(E, Util::getTraceNameFromFrame(frame, args));
+  local_results_->record_->record(
+      E, Util::getTraceNameFromFrame(frame, args), Category::None, nullptr);
 }
 
 void PythonTracer::recordPyReturn(PyFrameObject* frame) {
   static constexpr auto E = EventType::PyReturn;
-  local_results_->record_->record(E, Util::getTraceNameFromFrame(frame));
+  int cat = Category::Python;
+  if (curect_py_depth > 10) {
+    cat |= Category::DeepStack;
+  }
+  curect_py_depth--;
+  local_results_->record_->record(
+      E,
+      Util::getTraceNameFromFrame(frame),
+      cat,
+      local_results_->record_->top());
 }
 
 void PythonTracer::recordPyCReturn(PyFrameObject* frame, PyObject* args) {
   static constexpr auto E = EventType::PyCReturn;
-  local_results_->record_->record(E, Util::getTraceNameFromFrame(frame, args));
+  local_results_->record_->record(
+      E,
+      Util::getTraceNameFromFrame(frame, args),
+      Category::None,
+      local_results_->record_->top());
 }
 
 } // namespace profiler

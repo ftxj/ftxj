@@ -135,7 +135,7 @@ def jittable(model):
 
 model = jittable(model)
 
-model = torch.compile(model)
+
 
 import ctypes
 
@@ -152,19 +152,22 @@ def train():
     optimizer = Adam(model.parameters(), lr=1e-2, weight_decay=5e-4)
     for epoch in range(30):
         # Forward.
+        # if epoch == 1:
+        #     tracer.start()
+        # if epoch == 2:
+        #     model = torch.compile(model)
+        # if epoch == 4:
+        #     tracer.start()
+        # if epoch == 20:
+        #     tracer.start()
+
         model.train()
-        if epoch == 1:
-            _cudart = ctypes.CDLL('libcudart.so')
-            ret = _cudart.cudaProfilerStart()
-            tracer.start()
-        if epoch == 2:
-            tracer.start()
 
-        torch.cuda.nvtx.range_push(str(epoch) + "-E2E")
+        # torch.cuda.nvtx.range_push(str(epoch) + "-E2E")
 
-        torch.cuda.nvtx.range_push(str(epoch) + "-forward")
+        # torch.cuda.nvtx.range_push(str(epoch) + "-forward")
         logits = model(A, X)
-        torch.cuda.nvtx.range_pop()
+        # torch.cuda.nvtx.range_pop()
 
 
 
@@ -173,31 +176,33 @@ def train():
 
         # Backward.
         optimizer.zero_grad()
-        torch.cuda.nvtx.range_push(str(epoch) + "-backward")
+        # torch.cuda.nvtx.range_push(str(epoch) + "-backward")
         loss.backward()
-        torch.cuda.nvtx.range_pop()
+        # torch.cuda.nvtx.range_pop()
 
-        torch.cuda.nvtx.range_push(str(epoch) + "-step")
+        # torch.cuda.nvtx.range_push(str(epoch) + "-step")
         optimizer.step()
-        torch.cuda.nvtx.range_pop()
+        # torch.cuda.nvtx.range_pop()
         # Compute prediction.
         model.eval()
-        torch.cuda.nvtx.range_push(str(epoch) + "-eval")
+        # torch.cuda.nvtx.range_push(str(epoch) + "-eval")
         logits = model(A_hat, X)
         pred = logits.argmax(dim=1)
         # Evaluate the prediction.
         val_acc, test_acc = evaluate(g, pred)
-        torch.cuda.nvtx.range_pop()
+        # torch.cuda.nvtx.range_pop()
 
-        torch.cuda.nvtx.range_pop()
+        # torch.cuda.nvtx.range_pop()
 
-        if epoch == 1:
-            ret = _cudart.cudaProfilerStop()
-            print("train stop")
-            tracer.stop()
 
-        if epoch == 2:
-            tracer.stop()
+
+        # if epoch == 1:
+        #     tracer.stop()
+        # if epoch == 4:
+        #     tracer.stop()
+        # if epoch == 20:
+        #     tracer.stop()
+
 
         print(
             f"In epoch {epoch}, loss: {loss:.3f}, val acc: {val_acc:.3f}, test"
@@ -218,10 +223,15 @@ def to_json(x):
     data = x.dump()
     k = []
     for l in data:
-        k = k + l
+        new_l = []
+        for x in l:
+            if "timeline_split" not in x['name']:
+                new_l.append(x)
+        k = k + new_l
     import json
     data2 = {}
     data2['traceEvents'] = k
+    
     data2 = json.dumps(data2, indent=4)
     with open("sample7.json", "w") as outfile:
         outfile.write(data2)

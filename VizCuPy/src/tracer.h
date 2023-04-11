@@ -4,7 +4,7 @@ namespace profiler {
 
 struct TracerLocalResult;
 struct MetaEvent;
-
+struct Event;
 struct PythonTracer {
   PyObject_HEAD;
 
@@ -17,9 +17,11 @@ struct PythonTracer {
       int what,
       PyObject* arg);
 
-  void start(MetaEvent*);
-  void stop();
+  void start(bool from_py);
+  void stop(bool from_py);
   PyObject* toPyObj();
+
+  void updateMeta(MetaEvent*);
 
  private:
   void recordPyCall(PyFrameObject* frame);
@@ -29,6 +31,7 @@ struct PythonTracer {
   bool active_{false};
   TracerLocalResult* local_results_{nullptr};
   MetaEvent* meta{nullptr};
+  int curect_py_depth{0};
 };
 
 struct CudaTracerLocalResult;
@@ -39,9 +42,11 @@ struct CudaTracer {
   CudaTracer();
   ~CudaTracer();
 
-  void start(MetaEvent*);
-  void stop();
+  void start(bool from_py);
+  void stop(bool from_py);
   PyObject* toPyObj();
+
+  void updateMeta(MetaEvent*);
 
  private:
   bool activate_{false};

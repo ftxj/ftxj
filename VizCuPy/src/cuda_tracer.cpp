@@ -95,26 +95,27 @@ void traceRuntimeAPI(
   switch (cbid) {
     case CUPTI_RUNTIME_TRACE_CBID_cudaLaunch_v3020:
     case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchKernel_v7000:
-      data->record_->record(E, toPyStr(cbInfo->symbolName));
+      data->record_->record(E, toPyStr(cbInfo->symbolName), Category::Cuda);
       break;
     case CUPTI_RUNTIME_TRACE_CBID_cudaDeviceSynchronize_v3020:
-      printf("sync kernel %s\n", cbInfo->functionName);
+      data->record_->record(E, toPyStr(cbInfo->functionName), Category::Cuda);
       break;
     case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy_v3020:
-      printf("cuda memcpy\n", cbInfo->functionName);
+      data->record_->record(E, toPyStr(cbInfo->functionName), Category::Cuda);
       break;
-    case CUPTI_DRIVER_TRACE_CBID_cuDeviceGet:
-    case CUPTI_DRIVER_TRACE_CBID_cuCtxSynchronize:
-    case CUPTI_DRIVER_TRACE_CBID_cuStreamSynchronize_ptsz:
-    case CUPTI_DRIVER_TRACE_CBID_cuCtxCreate:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemPeerGetDevicePointer:
-    case CUPTI_DRIVER_TRACE_CBID_cuModuleLoadDataEx:
-    case CUPTI_DRIVER_TRACE_CBID_cu64MemHostGetDevicePointer:
-    case CUPTI_DRIVER_TRACE_CBID_cu64GraphicsResourceGetMappedPointer:
-      break;
+    // case CUPTI_DRIVER_TRACE_CBID_cuDeviceGet:
+    // case CUPTI_DRIVER_TRACE_CBID_cuCtxSynchronize:
+    // case CUPTI_DRIVER_TRACE_CBID_cuStreamSynchronize_ptsz:
+    // case CUPTI_DRIVER_TRACE_CBID_cuCtxCreate:
+    // case CUPTI_DRIVER_TRACE_CBID_cuMemPeerGetDevicePointer:
+    // case CUPTI_DRIVER_TRACE_CBID_cuModuleLoadDataEx:
+    // case CUPTI_DRIVER_TRACE_CBID_cu64MemHostGetDevicePointer:
+    // case CUPTI_DRIVER_TRACE_CBID_cu64GraphicsResourceGetMappedPointer:
+    //   break;
     default:
-      printf("unknow API when tracing %d\n", cbid);
-      exit(-1);
+      break;
+      // printf("unknow API when tracing %d\n", cbid);
+      // exit(-1);
   }
 }
 
@@ -142,11 +143,10 @@ static CUpti_SubscriberHandle subscriber;
 
 CudaTracer::CudaTracer() {}
 
-void CudaTracer::start(MetaEvent* m) {
+void CudaTracer::start(bool from_py) {
   if (!activate_) {
     meta = new MetaEvent();
-    meta->tp_base = m->tp_base;
-    meta->pid = m->pid;
+
     meta->tid = 1;
     local_results_ = new CudaTracerLocalResult(100000, meta);
     activate_ = true;
@@ -159,7 +159,11 @@ void CudaTracer::start(MetaEvent* m) {
   }
 }
 
-void CudaTracer::stop() {
+void CudaTracer::updateMeta(MetaEvent* m) {
+  meta->tp_base = m->tp_base;
+  meta->pid = m->pid;
+}
+void CudaTracer::stop(bool from_py) {
   if (activate_) {
     CUPTI_CALL(cuptiUnsubscribe(subscriber));
     activate_ = false;
