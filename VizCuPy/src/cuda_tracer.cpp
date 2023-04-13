@@ -103,6 +103,8 @@ void traceRuntimeAPI(
     case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy_v3020:
       data->record_->record(E, toPyStr(cbInfo->functionName), Category::Cuda);
       break;
+    case CUPTI_RUNTIME_TRACE_CBID:
+      break;
     // case CUPTI_DRIVER_TRACE_CBID_cuDeviceGet:
     // case CUPTI_DRIVER_TRACE_CBID_cuCtxSynchronize:
     // case CUPTI_DRIVER_TRACE_CBID_cuStreamSynchronize_ptsz:

@@ -7,59 +7,33 @@
 
 namespace ftxj {
 namespace profiler {
+namespace util {
+double eventTimeStamp(const struct timespec& a, const struct timespec& b);
 
-class Util {
- public:
-  static PyObject* getTraceNameFromFrame(PyFrameObject* frame) {
-    PyCodeObject* code = PyFrame_GetCode(frame);
-    PyObject* last_name = nullptr;
-    if (code) {
-      last_name = code->co_name;
-    } else {
-      last_name = PyUnicode_FromString("<noname>");
-    }
-    Py_DECREF(code);
-    return last_name;
-  }
+struct timespec llu2tp(unsigned long long a);
 
-  static PyObject* getTraceNameFromFrame(
-      PyFrameObject* frame,
-      const char* str) {
-    PyCodeObject* code = PyFrame_GetCode(frame);
-    PyObject* last_name = nullptr;
-    if (code) {
-      last_name = PyUnicode_Concat(code->co_name, PyUnicode_FromString(str));
-    } else {
-      last_name = PyUnicode_FromString("<noname>");
-    }
-    Py_DECREF(code);
-    return last_name;
-  }
+unsigned long long timeDiff(const struct timespec& a, const struct timespec& b);
 
-  static PyObject* getTraceNameFromFrame(PyFrameObject* frame, PyObject* arg) {
-    PyCodeObject* code = PyFrame_GetCode(frame);
-    PyObject* last_name = nullptr;
-    if (code) {
-      last_name = code->co_name;
-    } else {
-      last_name = PyUnicode_FromString("<noname>");
-    }
-    PyCFunctionObject* cfunc = reinterpret_cast<PyCFunctionObject*>(arg);
-    PyObject* cfunc_name = nullptr;
-    if (cfunc->m_module) {
-      cfunc_name = PyUnicode_FromObject(cfunc->m_module);
-      last_name = PyUnicode_Concat(last_name, PyUnicode_FromString("."));
-      last_name = PyUnicode_Concat(last_name, cfunc_name);
-    }
-    if (cfunc->m_ml) {
-      cfunc_name = PyUnicode_FromString(cfunc->m_ml->ml_name);
-      last_name = PyUnicode_Concat(last_name, PyUnicode_FromString("."));
-      last_name = PyUnicode_Concat(last_name, cfunc_name);
-    }
-    Py_DECREF(code);
-    return last_name;
-  }
-};
+struct timespec maxTime(struct timespec a, struct timespec b);
+
+unsigned long long tp2llu(struct timespec a);
+
+}; // namespace util
+
+#ifndef NDEBUG
+#define ASSERT(condition, message)                                       \
+  do {                                                                   \
+    if (!(condition)) {                                                  \
+      std::cerr << "Assertion `" #condition "` failed in " << __FILE__   \
+                << " line " << __LINE__ << ": " << message << std::endl; \
+      std::terminate();                                                  \
+    }                                                                    \
+  } while (false)
+#else
+#define ASSERT(condition, message) \
+  do {                             \
+  } while (false)
+#endif
 
 } // namespace profiler
 } // namespace ftxj

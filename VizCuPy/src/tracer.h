@@ -1,8 +1,12 @@
 #pragma once
+#include "queue.h"
+
 namespace ftxj {
 namespace profiler {
 
-struct TracerLocalResult;
+const int deep_stack_threshold = 10;
+const int queue_size = 100000;
+struct PyTracerLocalResult;
 struct MetaEvent;
 struct Event;
 struct PythonTracer {
@@ -17,42 +21,42 @@ struct PythonTracer {
       int what,
       PyObject* arg);
 
-  void start(bool from_py);
-  void stop(bool from_py);
+  void start(struct timespec* tp);
+  void stop();
   PyObject* toPyObj();
 
-  void updateMeta(MetaEvent*);
+  RecordQueue* getQueue();
 
  private:
-  void recordPyCall(PyFrameObject* frame);
+  void recordPyCall(PyFrameObject* frame, struct timespec* tp = nullptr);
   void recordPyCCall(PyFrameObject* frame, PyObject* arg);
-  void recordPyReturn(PyFrameObject* frame);
-  void recordPyCReturn(PyFrameObject* frame, PyObject* arg);
+  void recordPyReturn();
+  void recordPyCReturn();
   bool active_{false};
-  TracerLocalResult* local_results_{nullptr};
-  MetaEvent* meta{nullptr};
-  int curect_py_depth{0};
+  PyTracerLocalResult* local_results_{nullptr};
+  Event* father{nullptr};
+  int call_stack_depth{0};
 };
 
-struct CudaTracerLocalResult;
-struct CudaTracer {
-  PyObject_HEAD;
+// struct CudaTracerLocalResult;
+// struct CudaTracer {
+//   PyObject_HEAD;
 
- public:
-  CudaTracer();
-  ~CudaTracer();
+//  public:
+//   CudaTracer();
+//   ~CudaTracer();
 
-  void start(bool from_py);
-  void stop(bool from_py);
-  PyObject* toPyObj();
+//   void start(bool from_py);
+//   void stop(bool from_py);
+//   PyObject* toPyObj();
 
-  void updateMeta(MetaEvent*);
+//   void updateMeta(MetaEvent*);
 
- private:
-  bool activate_{false};
-  CudaTracerLocalResult* local_results_{nullptr};
-  MetaEvent* meta{nullptr};
-};
+//  private:
+//   bool activate_{false};
+//   CudaTracerLocalResult* local_results_{nullptr};
+//   MetaEvent* meta{nullptr};
+// };
 
 } // namespace profiler
 } // namespace ftxj

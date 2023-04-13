@@ -10,4 +10,5 @@ src/event.cpp
 src/interface.cpp
 src/python_tracer.cpp
 src/queue.cpp
+src/timeline_schedule.cpp
 src/util.cpp

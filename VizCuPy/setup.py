@@ -21,9 +21,10 @@ setuptools.setup(
                 "src/event.cpp",
                 "src/interface.cpp",
                 "src/python_tracer.cpp",
-                "src/cuda_tracer.cpp",
+                # "src/cuda_tracer.cpp",
                 "src/queue.cpp",
-                "src/util.cpp"
+                "src/util.cpp",
+                "src/timeline_schedule.cpp"
             ],
         )
     ],

@@ -4,115 +4,111 @@
 #include <vector>
 #include "cpython_version.h"
 #include "event.h"
+#include "timeline_schedule.h"
 #include "tracer.h"
-
 namespace ftxj {
 namespace profiler {
 
 struct Interface {
   PyObject_HEAD;
-  std::vector<PythonTracer*> tracer_;
-  std::vector<CudaTracer*> cu_tracer_;
-  std::vector<MetaEvent*> meta_;
+  PythonTracer* tracer_;
+  // CudaTracer* cu_tracer_;
+  TimeLineSchedule* timeline_schedule_;
   bool activate_{false};
-  bool cu_activate_{false};
-  int currect_number{0};
+  // bool cu_activate_{false};
+  struct timespec tp_start_;
 };
 
 namespace impl {
-void updateMeta(Interface* self) {
-  MetaEvent* meta = new MetaEvent();
-  meta->pid = self->meta_.size();
-  self->meta_.push_back(meta);
-  clock_gettime(CLOCK_REALTIME, &meta->tp_base);
-  self->tracer_[self->currect_number]->updateMeta(meta);
-  self->cu_tracer_[self->currect_number]->updateMeta(meta);
 
-  self->currect_number = self->meta_.size();
-}
-
-void pyTracerStart(Interface* self, bool from_py) {
+void pyTracerStart(Interface* self) {
   if (self->activate_) {
     printf("Only one PyTracer can be activate at a time\n");
     exit(-1);
   }
   self->activate_ = true;
-  PythonTracer* tracer = new PythonTracer();
-  Py_INCREF(tracer);
-  tracer->start(from_py);
-  self->tracer_.push_back(tracer);
+  self->tracer_ = new PythonTracer();
+  Py_INCREF(self->tracer_);
+
+  clock_gettime(CLOCK_REALTIME, &(self->tp_start_));
+
+  self->tracer_->start(&(self->tp_start_));
+  self->timeline_schedule_ = new TimeLineSchedule(self->tracer_->getQueue());
 }
 
-void cudaTracerStart(Interface* self, bool from_py) {
-  if (self->cu_activate_) {
-    printf("Only one CudaTracer can be activate at a time\n");
-    exit(-1);
-  }
-  self->cu_activate_ = true;
-  CudaTracer* tracer = new CudaTracer();
-  Py_INCREF(tracer);
-  tracer->start(from_py);
-  self->cu_tracer_.push_back(tracer);
+// void cudaTracerStart(Interface* self, bool from_py) {
+//   if (self->cu_activate_) {
+//     printf("Only one CudaTracer can be activate at a time\n");
+//     exit(-1);
+//   }
+//   self->cu_activate_ = true;
+//   CudaTracer* tracer = new CudaTracer();
+//   Py_INCREF(tracer);
+//   tracer->start(from_py);
+//   self->cu_tracer_.push_back(tracer);
 
-  updateMeta(self);
-}
+//   updateMeta(self);
+// }
 
-void pyTracerStop(Interface* self, bool from_py) {
-  if (self->activate_ && self->currect_number > 0) {
-    self->tracer_[self->currect_number - 1]->stop(from_py);
-  }
+void pyTracerStop(Interface* self) {
+  self->tracer_->stop();
   self->activate_ = false;
 }
 
-void cudaTracerStop(Interface* self, bool from_py) {
-  if (self->cu_activate_ && self->currect_number > 0) {
-    self->cu_tracer_[self->currect_number - 1]->stop(from_py);
-  }
-  self->cu_activate_ = false;
+// void cudaTracerStop(Interface* self, bool from_py) {
+//   if (self->cu_activate_ && self->currect_number > 0) {
+//     self->cu_tracer_[self->currect_number - 1]->stop(from_py);
+//   }
+//   self->cu_activate_ = false;
+// }
+
+void tracerStart(Interface* self) {
+  pyTracerStart(self);
 }
 
-void tracerStart(Interface* self, bool from_py) {
-  pyTracerStart(self, false);
-  cudaTracerStart(self, false);
-}
-
-void tracerStop(Interface* self, bool from_py) {
-  pyTracerStop(self, true);
-  cudaTracerStop(self, false);
+void tracerStop(Interface* self) {
+  pyTracerStop(self);
 }
 
 } // namespace impl
 
 static PyObject* InterfaceStart(Interface* self, PyObject* args) {
-  impl::tracerStart(self, true);
+  impl::tracerStart(self);
   Py_RETURN_NONE;
 }
 
 static PyObject* InterfaceStop(Interface* self, PyObject* args) {
-  impl::tracerStop(self, true);
+  impl::tracerStop(self);
   Py_RETURN_NONE;
 }
 
-static PyObject* InterfaceEnableCuda(Interface* self) {
-  impl::cudaTracerStart(self, true);
-  Py_RETURN_NONE;
-}
+// static PyObject* InterfaceEnableCuda(Interface* self) {
+//   impl::cudaTracerStart(self, true);
+//   Py_RETURN_NONE;
+// }
 
-static PyObject* InterfaceDisableCuda(Interface* self) {
-  impl::cudaTracerStop(self, true);
-  Py_RETURN_NONE;
-}
+// static PyObject* InterfaceDisableCuda(Interface* self) {
+//   impl::cudaTracerStop(self, true);
+//   Py_RETURN_NONE;
+// }
 
 static PyObject* InterfaceTimeSplit(Interface* self) {
-  if (self->currect_number <= 0) {
+  if (self->activate_ == false) {
     printf("Please Call Split after tracer start!\n");
     printf("If you have done this, this will be a bug.!\n");
     exit(-1);
   }
-  impl::pyTracerStop(self, false);
-  impl::cudaTracerStop(self, false);
-  impl::pyTracerStart(self, false);
-  impl::cudaTracerStart(self, false);
+  self->timeline_schedule_->split();
+  Py_RETURN_NONE;
+}
+
+static PyObject* InterfaceTimeSync(Interface* self) {
+  if (self->activate_ == false) {
+    printf("Please Call Split after tracer start!\n");
+    printf("If you have done this, this will be a bug.!\n");
+    exit(-1);
+  }
+  self->timeline_schedule_->align();
   Py_RETURN_NONE;
 }
 
@@ -129,23 +125,24 @@ static void InterfaceFree(Interface* self) {
 }
 
 static PyObject* InterfaceDump(Interface* self) {
-  PyObject* lst = PyList_New(0);
-  for (auto tracer : self->tracer_) {
-    PyList_Append(lst, tracer->toPyObj());
+  // PyObject* lst = PyList_New(0);
+  if (self == nullptr || self->timeline_schedule_ == nullptr) {
+    printf("bug happen in dump\n");
+    exit(-1);
   }
-  for (auto tracer : self->cu_tracer_) {
-    PyList_Append(lst, tracer->toPyObj());
-  }
-  return lst;
+  self->timeline_schedule_->update_queue_data(self->tp_start_);
+  // PyList_Append(lst, self->tracer_->toPyObj());
+  return self->tracer_->toPyObj();
 }
 
 static PyMethodDef PyInterfaceMethods[] = {
     {"start", (PyCFunction)InterfaceStart, METH_VARARGS, NULL},
     {"stop", (PyCFunction)InterfaceStop, METH_VARARGS, NULL},
     {"timeline_split", (PyCFunction)InterfaceTimeSplit, METH_VARARGS, NULL},
+    {"timeline_sync", (PyCFunction)InterfaceTimeSync, METH_VARARGS, NULL},
     {"dump", (PyCFunction)InterfaceDump, METH_VARARGS, NULL},
-    {"enable_cuda", (PyCFunction)InterfaceEnableCuda, METH_VARARGS, NULL},
-    {"disable_cuda", (PyCFunction)InterfaceDisableCuda, METH_VARARGS, NULL},
+    // {"enable_cuda", (PyCFunction)InterfaceEnableCuda, METH_VARARGS, NULL},
+    // {"disable_cuda", (PyCFunction)InterfaceDisableCuda, METH_VARARGS, NULL},
     {NULL, NULL, 0, NULL}};
 
 static PyTypeObject TracerInterfaceType = {

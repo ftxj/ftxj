@@ -9,44 +9,72 @@ namespace ftxj {
 namespace profiler {
 
 enum class EventType : uint8_t {
-  TorchOp = 0,
-  Allocation,
-  OutOfMemory,
+  None = 0,
+  TorchOp,
   PyCall,
   PyCCall,
   PyReturn,
   PyCReturn,
   CudaCall,
-  CudaReturn
+  CudaReturn,
+  CudaMem,
+  TritonCall,
+
+  PyComplete,
+  PyCComplete,
+  CudaComplete
 };
 
-enum Category {
+struct Name {
+  PyObject* co_name_py_{nullptr};
+  PyObject* co_filename_{nullptr};
+  PyObject* f_globals_name_{nullptr};
+  PyObject* m_module_{nullptr};
+  const char* c_func_name_{nullptr};
+  // PyMethodDef* m_ml_{nullptr};
+  PyObject* m_self_{nullptr};
+};
+
+enum EventTag {
   None = 0,
   Python = 1,
-  Cuda = 1 << 1,
-  Torch = 1 << 2,
-  DeepStack = 1 << 3
-}; // namespace Category
+  C = 1 << 2,
+  Cuda = 1 << 3,
+  Torch = 1 << 4,
+  Triton = 1 << 5,
+  DeepStack = 1 << 6,
+};
 
-struct MetaEvent {
-  struct timespec tp_base;
-  int pid;
-  int tid;
+struct EventArg {
+  const char* code_{nullptr};
 };
 
 struct Event {
-  EventType type;
-  PyObject* name;
-  Event* caller;
-  int category;
-  struct timespec tp;
-  Event() {}
-  Event(
-      const EventType&,
-      PyObject*,
-      int cat = Category::None,
-      Event* e = nullptr);
-  PyObject* toPyObj(const MetaEvent*);
+  Event();
+  ~Event();
+  void ahead(struct timespec tp);
+  void delay(struct timespec tp);
+  void recordTime();
+  void recordDuration();
+  void recordNameFromCode(PyCodeObject*);
+  void recordNameFromCode(PyCodeObject*, PyCFunctionObject*);
+  void recordGlobalName(PyFrameObject* frame);
+
+  PyObject* getEventTagName();
+  PyObject* getEventTypeForPh();
+  PyObject* getPyName();
+
+  PyObject* toPyObj();
+
+  EventType type_{EventType::None};
+  EventTag tag_{EventTag::None};
+  Name name_;
+  Event* caller_;
+  EventArg* args_;
+  int pid{0};
+  int tid{0};
+  struct timespec tp_;
+  unsigned long long dur_;
 };
 
 } // namespace profiler
