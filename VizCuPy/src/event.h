@@ -31,7 +31,7 @@ struct Name {
   PyObject* f_globals_name_{nullptr};
   PyObject* m_module_{nullptr};
   const char* c_func_name_{nullptr};
-  // PyMethodDef* m_ml_{nullptr};
+  PyMethodDef* m_ml_{nullptr};
   PyObject* m_self_{nullptr};
 };
 
@@ -56,6 +56,7 @@ struct Event {
   void delay(struct timespec tp);
   void recordTime();
   void recordDuration();
+  void recordName(const char* name);
   void recordNameFromCode(PyCodeObject*);
   void recordNameFromCode(PyCodeObject*, PyCFunctionObject*);
   void recordGlobalName(PyFrameObject* frame);
@@ -69,8 +70,8 @@ struct Event {
   EventType type_{EventType::None};
   EventTag tag_{EventTag::None};
   Name name_;
-  Event* caller_;
-  EventArg* args_;
+  Event* caller_{nullptr};
+  EventArg* args_{nullptr};
   int pid{0};
   int tid{0};
   struct timespec tp_;

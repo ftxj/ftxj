@@ -221,18 +221,8 @@ train()
 
 def to_json(x):
     data = x.dump()
-    k = []
-    for l in data:
-        new_l = []
-        for x in l:
-            if "timeline_split" not in x['name']:
-                new_l.append(x)
-        k = k + new_l
-    import json
-    data2 = {}
-    data2['traceEvents'] = k
     
-    data2 = json.dumps(data2, indent=4)
+    data2 = json.dumps(data, indent=4)
     with open("sample7.json", "w") as outfile:
         outfile.write(data2)
 

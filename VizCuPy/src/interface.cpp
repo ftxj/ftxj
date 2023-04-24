@@ -117,6 +117,7 @@ static PyObject* InterfaceNew(
     PyObject* args,
     PyObject* kwargs) {
   Interface* self = (Interface*)type->tp_alloc(type, 0);
+  Py_INCREF(self);
   return (PyObject*)self;
 }
 
@@ -126,6 +127,8 @@ static void InterfaceFree(Interface* self) {
 
 static PyObject* InterfaceDump(Interface* self) {
   // PyObject* lst = PyList_New(0);
+  printf("begin dump...\n");
+
   if (self == nullptr || self->timeline_schedule_ == nullptr) {
     printf("bug happen in dump\n");
     exit(-1);

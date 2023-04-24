@@ -99,16 +99,20 @@ void PythonTracer::start(struct timespec* tp) {
   }
   PyEval_SetProfile(PythonTracer::profFn, (PyObject*)this);
 }
+
 RecordQueue* PythonTracer::getQueue() {
   return local_results_->record_;
 }
+
 void PythonTracer::stop() {
+  printf("stop begin\n");
   ASSERT(active_, "PythonTracer stop twice\n");
   active_ = false;
   while (call_stack_depth > 0) {
     recordPyReturn();
   }
   PyEval_SetProfile(nullptr, nullptr);
+  printf("stop end\n");
 }
 
 PyObject* PythonTracer::toPyObj() {
@@ -125,7 +129,15 @@ void PythonTracer::recordPyCall(PyFrameObject* frame, struct timespec* tp) {
   if (call_stack_depth > deep_stack_threshold) {
     T = static_cast<EventTag>(EventTag::Python | EventTag::DeepStack);
   }
+  if (local_results_->record_ == nullptr) {
+    printf("bug happen, we doesn't have queue\n");
+    exit(-1);
+  }
   Event* event = local_results_->record_->getNextNeedRecorded();
+  if (event == nullptr) {
+    printf("bug happen, we doesn't return event\n");
+    exit(-1);
+  }
   event->caller_ = father;
   event->type_ = E;
   event->tag_ = T;
@@ -146,15 +158,25 @@ void PythonTracer::recordPyCCall(PyFrameObject* frame, PyObject* args) {
   static constexpr auto E = EventType::PyCCall;
   EventTag T = EventTag::C;
   auto code = PyFrame_GetCode(frame);
-  auto fn = reinterpret_cast<PyCFunctionObject*>(args);
   if (call_stack_depth > deep_stack_threshold) {
     T = static_cast<EventTag>(EventTag::C | EventTag::DeepStack);
   }
+  if (local_results_ == nullptr || local_results_->record_ == nullptr) {
+    printf("bug happen, we doesn't have queue\n");
+    exit(-1);
+  }
   Event* event = local_results_->record_->getNextNeedRecorded();
+  if (event == nullptr) {
+    printf("bug happen, we doesn't return event\n");
+    exit(-1);
+  }
   event->caller_ = father;
   event->type_ = E;
   event->tag_ = T;
-  event->recordNameFromCode(code, fn);
+  if (args != nullptr) {
+    auto fn = reinterpret_cast<PyCFunctionObject*>(args);
+    event->recordNameFromCode(code, fn);
+  }
   event->recordGlobalName(frame);
   event->recordTime();
   father = event;
@@ -165,7 +187,7 @@ void PythonTracer::recordPyCCall(PyFrameObject* frame, PyObject* args) {
 void PythonTracer::recordPyReturn() {
   static constexpr auto E = EventType::PyComplete;
   if (father == nullptr || call_stack_depth <= 0) {
-    printf("bug happen\n");
+    printf("bug happen, python call stack record fail\n");
     exit(-1);
   }
   call_stack_depth--;
@@ -177,7 +199,7 @@ void PythonTracer::recordPyReturn() {
 void PythonTracer::recordPyCReturn() {
   static constexpr auto E = EventType::PyCComplete;
   if (father == nullptr || call_stack_depth <= 0) {
-    printf("bug happen\n");
+    printf("bug happen, cpp call stack record fail\n");
     exit(-1);
   }
   call_stack_depth--;

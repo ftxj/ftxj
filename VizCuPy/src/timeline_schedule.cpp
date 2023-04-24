@@ -35,6 +35,7 @@ std::vector<std::vector<RecordQueue::Pos*>> TimeLineSchedule::
 }
 
 void TimeLineSchedule::update_queue_data(struct timespec tp) {
+  printf("begin update...\n");
   RecordQueue::Pos* p = queue->getTopEventPos();
   auto endp = queue->getTopEventPos();
   if (split_events_idx_.size() > 0) {
@@ -46,6 +47,7 @@ void TimeLineSchedule::update_queue_data(struct timespec tp) {
   for (auto j = zero; j < *p; ++j) {
     queue->getEvent(j)->ahead(tp);
   }
+  queue->getEvent(*p)->ahead(tp);
   if (split_events_.size() == 0) {
     return;
   }
@@ -81,18 +83,13 @@ void TimeLineSchedule::update_queue_data(struct timespec tp) {
       diff_timer.push_back(t);
       unsigned long long a_sec = static_cast<unsigned long long>(t.tv_sec);
       unsigned long long a_ns = static_cast<unsigned long long>(t.tv_nsec);
-      printf("diff time size = %lld, %lld\n", a_sec, a_ns);
     }
-    printf("diff time size = %d\n", diff_timer.size());
     auto endp = queue->getTopEventPos();
     for (int k = 0; k < diff_timer.size(); ++k) {
-      printf("delay timeline\n");
       if (k < split_events_idx_.size()) {
         endp = split_events_idx_[k];
-        printf("check endp\n");
       }
       for (auto bb = *ordered_align[k][j]; bb < *endp; ++bb) {
-        printf("delay event\n");
         queue->getEvent(bb)->delay(diff_timer[k]);
       }
     }

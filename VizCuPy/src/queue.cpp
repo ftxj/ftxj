@@ -10,78 +10,75 @@
 namespace ftxj {
 namespace profiler {
 
-static queue_size_t threshold_size =
-    queue_size_t(2l * 1024l * 1024l * 1024l) / sizeof(RecordQueue);
+static long long threshold_size = 1000000;
 
-RecordQueue::RecordQueue(const queue_size_t& s) : size_(s), pointer_(0) {
+RecordQueue::RecordQueue(const int& s) : size_(s), pointer_(-1) {
   if (size_ < threshold_size) {
-    fast_queue_ = std::vector<Event>(size_);
+    fast_queue_ = new Event[size_];
+    slow_queue_.push_back(fast_queue_);
   } else {
-    printf("please shrink the queue size\n");
+    printf("OOM happen, please shrink the queue size\n");
     exit(-1);
   }
 }
 
 Event* RecordQueue::getEvent(const RecordQueue::Pos& pos) {
-  if (pos.use_slow) {
-    return *std::prev(slow_queue_.begin(), pos.iter);
-  } else {
-    return &(fast_queue_[pos.iter]);
+  if (pos.bucket >= slow_queue_.size() || pos.iter < 0 || pos.iter >= size_) {
+    printf("bug happen on getEvent %d %d\n", pos.bucket, pos.iter);
+    exit(-1);
   }
+  return &slow_queue_[pos.bucket][pos.iter];
 }
 
 Event* RecordQueue::getTopEvent() {
-  if (size_ >= threshold_size) {
-    return slow_queue_.front();
-  }
-  if (pointer_ < 0) {
-    printf("bug happen in top\n");
+  if (pointer_ < 0 || pointer_ >= size_) {
+    printf("bug happen on getTopEvent\n");
     exit(-1);
   }
-  auto r = &fast_queue_[pointer_];
-  return r;
+  return &slow_queue_[slow_queue_.size() - 1][pointer_];
 }
 
 RecordQueue::Pos* RecordQueue::getTopEventPos() {
-  RecordQueue::Pos* pos = new RecordQueue::Pos();
-  if (slow_queue_.size() > 0) {
-    pos->use_slow = true;
-    pos->iter = slow_queue_.size() - 1;
-  } else if (pointer_ > 0) {
-    pos->use_slow = false;
-    pos->iter = pointer_;
-  } else {
-    printf("bug happen in getTopEventPos\n");
+  if (pointer_ < 0 || pointer_ >= size_) {
+    printf("bug happen on getTopEventPos\n");
     exit(-1);
+  }
+  RecordQueue::Pos* pos = new RecordQueue::Pos();
+  pos->bucket = slow_queue_.size() - 1;
+  pos->iter = pointer_;
+  if (pos->iter == 100000) {
+    printf("bug on get top\n");
   }
   return pos;
 }
 
 Event* RecordQueue::getNextNeedRecorded() {
-  if (size_ > pointer_) {
+  if (pointer_ + 1 < size_) {
     pointer_++;
-    return &fast_queue_[pointer_ - 1];
-  } else if (size_ <= pointer_ && size_ <= threshold_size) {
-    fast_queue_.resize(2 * size_ + 1);
-    size_ = size_ * 2 + 1;
-    pointer_++;
-    return &fast_queue_[pointer_ - 1];
+    return &slow_queue_[slow_queue_.size() - 1][pointer_];
   } else {
-    Event* e = new Event();
-    slow_queue_.push_back(e);
-    return e;
+    printf("resize happen, profiler cost will be high\n");
+    fast_queue_ = new Event[size_];
+    slow_queue_.push_back(fast_queue_);
+    pointer_ = 0;
+    return &fast_queue_[pointer_];
   }
 }
 
 PyObject* RecordQueue::toPyObj() {
   PyObject* lst = PyList_New(0);
-  for (queue_size_t i = 0; i < pointer_ && i < fast_queue_.size(); ++i) {
-    if (auto dic = fast_queue_[i].toPyObj()) {
-      PyList_Append(lst, dic);
+  for (int bucket = 0; bucket < slow_queue_.size() - 1; ++bucket) {
+    printf("to obj bucket = %d\n", bucket);
+    for (int q = 0; q < size_; ++q) {
+      if (auto dic = slow_queue_[bucket][q].toPyObj()) {
+        Py_INCREF(dic);
+        PyList_Append(lst, dic);
+      }
     }
   }
-  for (auto event : slow_queue_) {
-    if (auto dic = event->toPyObj()) {
+  for (int i = 0; i <= pointer_; ++i) {
+    if (auto dic = fast_queue_[i].toPyObj()) {
+      Py_INCREF(dic);
       PyList_Append(lst, dic);
     }
   }

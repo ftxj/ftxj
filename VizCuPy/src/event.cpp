@@ -35,11 +35,15 @@ PyObject* Event::getEventTypeForPh() {
     case EventType::PyCall:
     case EventType::PyCCall:
     case EventType::CudaCall:
+      printf("shouldn't have B type events.\n");
+      exit(-1);
       s += "B";
       break;
     case EventType::PyReturn:
     case EventType::PyCReturn:
     case EventType::CudaReturn:
+      printf("shouldn't have E type events.\n");
+      exit(-1);
       s += "E";
       break;
     case EventType::PyComplete:
@@ -55,14 +59,14 @@ PyObject* Event::getEventTypeForPh() {
 }
 PyObject* Event::getPyName() {
   std::string name = "";
-  if (name_.co_filename_) {
-    name += std::string(PyUnicode_AsUTF8(name_.co_filename_));
-    name += ".";
-  }
-  if (name_.f_globals_name_) {
-    name += std::string(PyUnicode_AsUTF8(name_.f_globals_name_));
-    name += ".";
-  }
+  // if (name_.co_filename_) {
+  //   name += std::string(PyUnicode_AsUTF8(name_.co_filename_));
+  //   name += ".";
+  // }
+  // if (name_.f_globals_name_) {
+  //   name += std::string(PyUnicode_AsUTF8(name_.f_globals_name_));
+  //   name += ".";
+  // }
   if (name_.co_name_py_) {
     name += std::string(PyUnicode_AsUTF8(name_.co_name_py_));
     if (name_.c_func_name_) {
@@ -90,8 +94,11 @@ Event::Event()
 Event::~Event() {
   Py_XDECREF(name_.co_name_py_);
 
+  // Py_XDECREF(name_.m_ml_);
+
   Py_XDECREF(name_.co_filename_);
   Py_XDECREF(name_.f_globals_name_);
+
   Py_XDECREF(name_.m_module_);
   Py_XDECREF(name_.m_self_);
 }
@@ -103,7 +110,6 @@ void Event::recordTime() {
 
 void Event::ahead(struct timespec tp) {
   auto diff = util::timeDiff(tp_, tp);
-  printf("diff %lld\n", diff);
   tp_ = util::llu2tp(diff);
 }
 
@@ -118,51 +124,105 @@ void Event::recordDuration() {
   dur_ = util::timeDiff(tp, tp_);
 }
 
-void Event::recordNameFromCode(PyCodeObject* code) {
-  name_.co_name_py_ = code->co_name;
-  name_.co_filename_ = code->co_filename;
+void Event::recordName(const char* name) {
+  name_.c_func_name_ = name;
+}
 
-  Py_XINCREF(name_.co_name_py_);
-  Py_XINCREF(name_.co_filename_);
+void Event::recordNameFromCode(PyCodeObject* code) {
+  if (!code) {
+    printf("bug happen in record name from code \n");
+  }
+  if (code->co_name) {
+    name_.co_name_py_ = code->co_name;
+    Py_INCREF(name_.co_name_py_);
+  }
+  if (code->co_filename) {
+    name_.co_filename_ = code->co_filename;
+    Py_INCREF(name_.co_filename_);
+  }
+
+  // name_.m_ml_ = nullptr;
+  name_.m_self_ = nullptr;
+  name_.m_module_ = nullptr;
+  name_.c_func_name_ = nullptr;
 }
 
 void Event::recordGlobalName(PyFrameObject* frame) {
-  if (frame->f_globals) {
-    name_.f_globals_name_ = PyDict_GetItemString(frame->f_globals, "__name__");
-    Py_XINCREF(name_.f_globals_name_);
+  if (!frame) {
+    printf("bug happen in record global name from frame \n");
   }
+  name_.f_globals_name_ = nullptr;
+  // if (frame->f_globals) {
+  //   name_.f_globals_name_ = PyDict_GetItemString(frame->f_globals,
+  //   "__name__"); if (name_.f_globals_name_) {
+  //     Py_INCREF(name_.f_globals_name_);
+  //   }
+  // }
 }
 
 void Event::recordNameFromCode(PyCodeObject* code, PyCFunctionObject* fn) {
-  name_.co_name_py_ = code->co_name;
-  name_.co_filename_ = code->co_filename;
+  if (code->co_name) {
+    name_.co_name_py_ = code->co_name;
+    Py_INCREF(name_.co_name_py_);
+  }
+  if (code->co_filename) {
+    name_.co_filename_ = code->co_filename;
+    Py_INCREF(name_.co_filename_);
+  }
 
-  Py_XINCREF(name_.co_filename_);
-  Py_XINCREF(name_.co_name_py_);
-
-  // name_.m_ml_ = fn->m_ml;
-  name_.m_self_ = fn->m_self;
-  name_.m_module_ = fn->m_module;
-  name_.c_func_name_ = fn->m_ml->ml_name;
-
-  // Py_XINCREF(name_.m_ml_);
-  Py_XINCREF(name_.m_self_);
-  Py_XINCREF(name_.m_module_);
+  if (fn) {
+    // name_.m_ml_ = fn->m_ml;
+    // if (fn->m_self) {
+    //   name_.m_self_ = fn->m_self;
+    //   Py_INCREF(name_.m_self_);
+    // }
+    // if (fn->m_module) {
+    //   name_.m_module_ = fn->m_module;
+    //   Py_INCREF(name_.m_module_);
+    // }
+    if (fn->m_ml->ml_name) {
+      name_.c_func_name_ = fn->m_ml->ml_name;
+    }
+    // Py_INCREF(name_.m_ml_);
+  }
 }
 
 PyObject* Event::toPyObj() {
   PyObject* dict = PyDict_New();
-  PyDict_SetItemString(
-      dict, "ts", PyFloat_FromDouble(util::tp2llu(tp_) / 1000.0));
-  PyDict_SetItemString(dict, "pid", PyLong_FromLong(pid));
-  PyDict_SetItemString(dict, "tid", PyLong_FromLong(tid));
-  PyDict_SetItemString(dict, "name", getPyName());
-  PyDict_SetItemString(dict, "cat", getEventTagName());
-  PyDict_SetItemString(dict, "ph", getEventTypeForPh());
+  if (dict == nullptr) {
+    printf("unkonw fail reason, check Event::toPyObj\n");
+    exit(-1);
+  }
+
+  auto ts = PyFloat_FromDouble(util::tp2llu(tp_) / 1000.0);
+  PyDict_SetItemString(dict, "ts", ts);
+  Py_DECREF(ts);
+
+  auto py_pid = PyLong_FromLong(pid);
+  PyDict_SetItemString(dict, "pid", py_pid);
+  Py_DECREF(py_pid);
+
+  // auto py_tid = PyLong_FromLong(tid);
+  // PyDict_SetItemString(dict, "tid", py_tid);
+  // Py_DECREF(py_tid);
+
+  auto name = getPyName();
+  PyDict_SetItemString(dict, "name", name);
+  Py_DECREF(name);
+
+  // auto cat = getEventTagName();
+  // PyDict_SetItemString(dict, "cat", cat);
+  // Py_DECREF(cat);
+
+  auto ph = getEventTypeForPh();
+  PyDict_SetItemString(dict, "ph", ph);
+  Py_DECREF(ph);
+
   if (type_ == EventType::PyComplete || type_ == EventType::PyCComplete ||
       type_ == EventType::CudaComplete) {
-    PyDict_SetItemString(
-        dict, "dur", PyFloat_FromDouble(double(dur_) / 1000.0));
+    auto dur = PyFloat_FromDouble(double(dur_) / 1000.0);
+    PyDict_SetItemString(dict, "dur", dur);
+    Py_DECREF(dur);
   }
   return dict;
 }

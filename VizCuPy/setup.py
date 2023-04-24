@@ -12,11 +12,11 @@ setuptools.setup(
     packages=setuptools.find_packages("python"),
     package_dir={"": "python"},
     ext_modules=[
-        CUDAExtension(
+        CppExtension(
             "ftxj.profiler",
-            include_dirs = ['/usr/local/cuda/include'],
-            libraries = ['cuda', 'cupti'],
-            library_dirs = ['/usr/local/cuda/lib64'],
+            # include_dirs = ['/usr/local/cuda/include'],
+            # libraries = ['cuda', 'cupti'],
+            # library_dirs = ['/usr/local/cuda/lib64'],
             sources=[
                 "src/event.cpp",
                 "src/interface.cpp",

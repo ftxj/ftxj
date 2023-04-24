@@ -46,16 +46,17 @@ struct PythonTracer {
 //   CudaTracer();
 //   ~CudaTracer();
 
-//   void start(bool from_py);
-//   void stop(bool from_py);
+//   void start();
+//   void stop();
 //   PyObject* toPyObj();
-
-//   void updateMeta(MetaEvent*);
+//   void recordCudaCall(const char*);
+//   void recordCudaReturn();
 
 //  private:
 //   bool activate_{false};
+//   Event* father{nullptr};
 //   CudaTracerLocalResult* local_results_{nullptr};
-//   MetaEvent* meta{nullptr};
+//   int call_stack_depth{0};
 // };
 
 } // namespace profiler

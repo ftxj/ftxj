@@ -6,46 +6,55 @@
 #include <vector>
 namespace ftxj {
 namespace profiler {
-using queue_size_t = unsigned long long;
 
 struct Event;
-
+static const int malloc_size = 100000;
 class RecordQueue {
  public:
-  RecordQueue(const queue_size_t&);
+  RecordQueue(const int&);
 
   struct Pos {
     int iter{0};
-    bool use_slow{false};
+    int bucket{0};
     bool operator<(const Pos& b) {
-      if (!use_slow && !b.use_slow) {
-        return iter < b.iter;
-      } else if (use_slow && b.use_slow) {
-        return iter < b.iter;
-      } else if (use_slow && !b.use_slow) {
-        return false;
+      if (bucket != b.bucket) {
+        return bucket < b.bucket;
       } else {
-        return true;
+        return iter < b.iter;
       }
     }
     Pos& operator++() {
-      if (use_slow) {
-        printf("not implement...\n");
-        exit(-1);
+      if (iter + 1 < malloc_size) {
+        iter++;
+      } else {
+        iter = 0;
+        bucket++;
       }
-      iter++;
       return *this;
     }
     Pos& operator--() {
-      if (use_slow) {
-        printf("not implement...\n");
-        exit(-1);
+      if (iter - 1 < 0) {
+        iter = malloc_size - 1;
+        bucket--;
+        if (bucket < 0) {
+          printf("bug happen in --\n");
+          exit(-1);
+        }
+      } else {
+        iter--;
+        if (iter < 0) {
+          printf("bug happen in --\n");
+          exit(-1);
+        }
       }
-      iter--;
       return *this;
     }
-    bool operator>(int b) {
-      return iter > b;
+    bool operator>(const Pos& b) {
+      if (bucket != b.bucket) {
+        return bucket > b.bucket;
+      } else {
+        return iter > b.iter;
+      }
     }
   };
 
@@ -57,10 +66,10 @@ class RecordQueue {
   PyObject* toPyObj();
 
  private:
-  queue_size_t size_;
-  queue_size_t pointer_;
-  std::vector<Event> fast_queue_;
-  std::list<Event*> slow_queue_;
+  int size_;
+  int pointer_;
+  Event* fast_queue_;
+  std::vector<Event*> slow_queue_;
 };
 } // namespace profiler
 } // namespace ftxj

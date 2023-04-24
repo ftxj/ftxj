@@ -31,12 +31,12 @@ def sss():
 # x = torch.mul(x, x)
 
 
-def train():
+def foo():
     sss()
-    for epoch in epoch(3):
-        tracer.timeline_sync()
+    for i in range(3):
+        # tracer.timeline_sync()
         fib(2)
-        tracer.timeline_split()
+        # tracer.timeline_split()
     
     tracer.stop()
 
